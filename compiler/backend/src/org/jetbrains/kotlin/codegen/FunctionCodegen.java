@@ -786,7 +786,7 @@ public class FunctionCodegen {
         }
 
         generateLocalVariablesForParameters(mv,
-                                            jvmMethodSignature,
+                                            jvmMethodSignature, functionDescriptor,
                                             thisType, methodBegin, methodEnd, functionDescriptor.getValueParameters(),
                                             destructuredParametersForSuspendLambda,
                                             AsmUtil.isStaticMethod(ownerKind, functionDescriptor), typeMapper, shiftForDestructuringVariables
@@ -796,6 +796,7 @@ public class FunctionCodegen {
     public static void generateLocalVariablesForParameters(
             @NotNull MethodVisitor mv,
             @NotNull JvmMethodSignature jvmMethodSignature,
+            @NotNull FunctionDescriptor functionDescriptor,
             @Nullable Type thisType,
             @NotNull Label methodBegin,
             @NotNull Label methodEnd,
@@ -804,13 +805,15 @@ public class FunctionCodegen {
             KotlinTypeMapper typeMapper
     ) {
         generateLocalVariablesForParameters(
-                mv, jvmMethodSignature, thisType, methodBegin, methodEnd, valueParameters, Collections.emptyList(), isStatic, typeMapper,
+                mv, jvmMethodSignature, functionDescriptor,
+                thisType, methodBegin, methodEnd, valueParameters, Collections.emptyList(), isStatic, typeMapper,
                 0);
     }
 
     private static void generateLocalVariablesForParameters(
             @NotNull MethodVisitor mv,
             @NotNull JvmMethodSignature jvmMethodSignature,
+            @NotNull FunctionDescriptor functionDescriptor,
             @Nullable Type thisType,
             @NotNull Label methodBegin,
             @NotNull Label methodEnd,
@@ -848,6 +851,10 @@ public class FunctionCodegen {
                         nameForDestructuredParameter == null
                         ? computeParameterName(i, parameter)
                         : nameForDestructuredParameter;
+            }
+            else if (kind == JvmMethodParameterKind.RECEIVER) {
+                parameterName = AsmUtil.getNameForReceiverParameter(
+                        functionDescriptor, typeMapper.getBindingContext(), typeMapper.getLanguageVersionSettings());
             }
             else {
                 String lowercaseKind = kind.name().toLowerCase();
