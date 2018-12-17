@@ -981,6 +981,11 @@ public class KotlinEvaluateExpressionTestGenerated extends AbstractKotlinEvaluat
             runTest("idea/testData/debugger/tinyApp/src/evaluate/multipleBreakpoints/smartcasts.kt");
         }
 
+        @TestMetadata("thisLabels.kt")
+        public void testThisLabels() throws Exception {
+            runTest("idea/testData/debugger/tinyApp/src/evaluate/multipleBreakpoints/thisLabels.kt");
+        }
+
         @TestMetadata("whenEntry.kt")
         public void testWhenEntry() throws Exception {
             runTest("idea/testData/debugger/tinyApp/src/evaluate/multipleBreakpoints/whenEntry.kt");
