@@ -163,15 +163,15 @@ class MethodInliner(
 
         val markerShift = calcMarkerShift(parameters, node)
         val lambdaInliner = object : InlineAdapter(remappingMethodAdapter, parameters.argsSizeOnStack, sourceMapper) {
-            private var transformationInfo: TransformationInfo? = null
+            private var transformationInfos = LinkedList<TransformationInfo>()
 
             private fun handleAnonymousObjectRegeneration() {
-                transformationInfo = iterator.next()
+                val transformationInfo = iterator.next().also { transformationInfos.push(it) }
 
-                val oldClassName = transformationInfo!!.oldClassName
-                if (transformationInfo!!.shouldRegenerate(isSameModule)) {
+                val oldClassName = transformationInfo.oldClassName
+                if (transformationInfo.shouldRegenerate(isSameModule)) {
                     //TODO: need poping of type but what to do with local funs???
-                    val newClassName = transformationInfo!!.newClassName
+                    val newClassName = transformationInfo.newClassName
                     remapper.addMapping(oldClassName, newClassName)
 
                     val childInliningContext = inliningContext.subInlineWithClassRegeneration(
@@ -179,7 +179,7 @@ class MethodInliner(
                         currentTypeMapping,
                         inlineCallSiteInfo
                     )
-                    val transformer = transformationInfo!!.createTransformer(
+                    val transformer = transformationInfo.createTransformer(
                         childInliningContext,
                         isSameModule,
                         CoroutineTransformer.findFakeContinuationConstructorClassName(node)
@@ -191,7 +191,7 @@ class MethodInliner(
 
                     if (inliningContext.isInliningLambda &&
                         inliningContext.lambdaInfo !is DefaultLambda && //never delete default lambda classes
-                        transformationInfo!!.canRemoveAfterTransformation() &&
+                        transformationInfo.canRemoveAfterTransformation() &&
                         !inliningContext.root.state.globalInlineContext.isTypeFromInlineFunction(oldClassName)
                     ) {
                         // this class is transformed and original not used so we should remove original one after inlining
@@ -202,7 +202,7 @@ class MethodInliner(
                         ReifiedTypeInliner.putNeedClassReificationMarker(mv)
                         result.reifiedTypeParametersUsages.mergeAll(transformResult.reifiedTypeParametersUsages)
                     }
-                } else if (!transformationInfo!!.wasAlreadyRegenerated) {
+                } else if (!transformationInfo.wasAlreadyRegenerated) {
                     result.addNotChangedClass(oldClassName)
                 }
             }
@@ -313,6 +313,7 @@ class MethodInliner(
                     childSourceMapper.endMapping()
                     inlineOnlySmapSkipper?.markCallSiteLineNumber(remappingMethodAdapter)
                 } else if (isAnonymousConstructorCall(owner, name)) { //TODO add method
+                    val transformationInfo = transformationInfos.pop()
                     //TODO add proper message
                     assert(transformationInfo is AnonymousObjectTransformationInfo) {
                         "<init> call doesn't correspond to object transformation info for '$owner.$name': $transformationInfo"
@@ -321,7 +322,7 @@ class MethodInliner(
                     val shouldRegenerate = transformationInfo!!.shouldRegenerate(isSameModule)
                     val isContinuation = parent != null && parent.isContinuation
                     if (shouldRegenerate || isContinuation) {
-                        assert(shouldRegenerate || inlineCallSiteInfo.ownerClassName == transformationInfo!!.oldClassName) { "Only coroutines can call their own constructors" }
+                        assert(shouldRegenerate || inlineCallSiteInfo.ownerClassName == transformationInfo.oldClassName) { "Only coroutines can call their own constructors" }
 
                         //put additional captured parameters on stack
                         var info = transformationInfo as AnonymousObjectTransformationInfo
@@ -357,11 +358,9 @@ class MethodInliner(
                         //TODO: add new inner class also for other contexts
                         if (inliningContext.parent is RegeneratedClassContext) {
                             inliningContext.parent.typeRemapper.addAdditionalMappings(
-                                transformationInfo!!.oldClassName, transformationInfo!!.newClassName
+                                transformationInfo.oldClassName, transformationInfo.newClassName
                             )
                         }
-
-                        transformationInfo = null
                     } else {
                         super.visitMethodInsn(opcode, owner, name, desc, itf)
                     }
