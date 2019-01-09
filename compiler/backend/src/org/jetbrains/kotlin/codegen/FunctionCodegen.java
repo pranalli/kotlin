@@ -845,7 +845,7 @@ public class FunctionCodegen {
 
             if (kind == JvmMethodParameterKind.VALUE) {
                 ValueParameterDescriptor parameter = valueParameterIterator.next();
-                String nameForDestructuredParameter = ValueParameterDescriptorImpl.getNameForDestructuredParameterOrNull(parameter);
+                String nameForDestructuredParameter = VariableAsmNameManglingUtils.getNameForDestructuredParameterOrNull(parameter);
 
                 parameterName =
                         nameForDestructuredParameter == null
@@ -904,7 +904,7 @@ public class FunctionCodegen {
             List<ValueParameterDescriptor> destructuredParametersForSuspendLambda
     ) {
         for (ValueParameterDescriptor parameter : destructuredParametersForSuspendLambda) {
-            String nameForDestructuredParameter = ValueParameterDescriptorImpl.getNameForDestructuredParameterOrNull(parameter);
+            String nameForDestructuredParameter = VariableAsmNameManglingUtils.getNameForDestructuredParameterOrNull(parameter);
             if (nameForDestructuredParameter == null) continue;
 
             Type type = typeMapper.mapType(parameter.getType());
