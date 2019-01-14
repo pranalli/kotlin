@@ -1434,7 +1434,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
             String typeSuffix = StringsKt.substringAfterLast(type.getInternalName(), '$', "");
             assert !typeSuffix.isEmpty();
 
-            String localVariableName = "$fun$"
+            String localVariableName = AsmUtil.LOCAL_FUNCTION_VARIABLE_PREFIX
                     + VariableAsmNameManglingUtils.mangleNameIfNeeded(functionDescriptor.getName().asString())
                     + "$" + typeSuffix;
 
