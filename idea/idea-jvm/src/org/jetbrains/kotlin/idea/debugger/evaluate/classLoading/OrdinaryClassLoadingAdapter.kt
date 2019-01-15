@@ -26,6 +26,7 @@ import com.intellij.openapi.util.SystemInfo
 import com.sun.jdi.ClassLoaderReference
 import com.sun.jdi.ClassType
 import org.jetbrains.kotlin.idea.debugger.isDexDebug
+import org.jetbrains.kotlin.idea.debugger.keepCompat
 import org.jetbrains.org.objectweb.asm.ClassReader
 import org.jetbrains.org.objectweb.asm.ClassVisitor
 import org.jetbrains.org.objectweb.asm.ClassWriter
@@ -74,7 +75,7 @@ class OrdinaryClassLoadingAdapter : ClassLoadingAdapter {
         val classLoader = try {
             ClassLoadingUtils.getClassLoader(context, process)
         } catch (e: Exception) {
-            throw EvaluateException("Error creating evaluation class loader: $e", e)
+            throw EvaluateException("Error creating evaluation class loader: " + e, e)
         }
 
         val debugProcessVersionString = process.virtualMachineProxy.version()
@@ -136,9 +137,7 @@ class OrdinaryClassLoadingAdapter : ClassLoadingAdapter {
             val defineMethod = classLoaderType.concreteMethodByName("defineClass", "(Ljava/lang/String;[BII)Ljava/lang/Class;")
             val nameObj = vm.mirrorOf(name)
 
-            // Still actual for older platform versions
-            @Suppress("DEPRECATION")
-            DebuggerUtilsEx.keep(nameObj, context)
+            context.keepCompat(nameObj)
 
             process.invokeMethod(
                 context, classLoader, defineMethod,

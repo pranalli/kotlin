@@ -7,8 +7,10 @@ package org.jetbrains.kotlin.idea.debugger
 
 import com.intellij.debugger.engine.DebugProcessImpl
 import com.intellij.debugger.engine.DebuggerManagerThreadImpl
+import com.intellij.debugger.engine.evaluation.EvaluationContextImpl
 import com.intellij.debugger.engine.events.DebuggerCommandImpl
 import com.intellij.debugger.impl.DebuggerContextImpl
+import com.intellij.debugger.impl.DebuggerUtilsEx
 import com.intellij.psi.PsiElement
 import com.sun.jdi.*
 import com.sun.tools.jdi.LocalVariableImpl
@@ -48,11 +50,10 @@ fun isInsideInlineArgument(
     return markerLocalVariables
         .map { it.name().drop(JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT.length) }
         .any { variableName ->
-            if (variableName.startsWith("-")) {
+            if ('-' in variableName) {
                 val lambdaClassName = asmTypeForAnonymousClass(bindingContext, inlineArgument)
                     .internalName.substringAfterLast("/")
-
-                variableName == "-$functionName-$lambdaClassName"
+                variableName == "$functionName-$lambdaClassName"
             } else {
                 // For Kotlin up to 1.3.10
                 lambdaOrdinalByLocalVariable(variableName) == lambdaOrdinal
@@ -276,4 +277,10 @@ fun Type.isSubtype(type: AsmType): Boolean {
     }
 
     return false
+}
+
+fun EvaluationContextImpl.keepCompat(value: Value) {
+    // Still actual for older platform versions
+    @Suppress("DEPRECATION")
+    DebuggerUtilsEx.keep(value, this)
 }

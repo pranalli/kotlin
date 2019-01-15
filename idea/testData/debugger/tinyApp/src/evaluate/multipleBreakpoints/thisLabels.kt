@@ -7,7 +7,7 @@ fun main() {
             //Breakpoint!
             block(3) c@ {
                 //Breakpoint!
-                val a = 5
+                val a = this@a + this@b + this@c
             }
         }
     }

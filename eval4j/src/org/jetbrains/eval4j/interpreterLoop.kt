@@ -171,9 +171,11 @@ fun interpreterLoop(
                             val value = frame.getStackTop()
                             val expectedType = Type.getReturnType(m.desc)
                             if (expectedType.sort == Type.OBJECT || expectedType.sort == Type.ARRAY) {
-                                val coerced = if (value != NULL_VALUE && value.asmType != expectedType)
-                                                    ObjectValue(value.obj(), expectedType)
-                                              else value
+                                val coerced = when {
+                                    value is PrimitiveValue -> eval.boxType(value)
+                                    value != NULL_VALUE && value.asmType != expectedType -> ObjectValue(value.obj(), expectedType)
+                                    else -> value
+                                }
                                 return ValueReturned(coerced)
                             }
                             if (value.asmType != expectedType) {

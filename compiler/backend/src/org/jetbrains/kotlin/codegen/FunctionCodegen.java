@@ -726,7 +726,7 @@ public class FunctionCodegen {
             }
             assert methodEntry != null : "methodEntry is not initialized";
             mv.visitLocalVariable(
-                    JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT + "-" + functionName + "-" + lambdaLocalName,
+                    JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT + functionName + "-" + lambdaLocalName,
                     Type.INT_TYPE.getDescriptor(), null,
                     methodEntry, methodEnd,
                     lambdaFakeIndex);

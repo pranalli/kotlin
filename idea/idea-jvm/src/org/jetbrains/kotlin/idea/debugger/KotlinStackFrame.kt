@@ -30,12 +30,12 @@ import com.sun.jdi.ReferenceType
 import com.sun.jdi.Type
 import com.sun.jdi.Value
 import org.jetbrains.kotlin.codegen.AsmUtil
+import org.jetbrains.kotlin.codegen.AsmUtil.THIS
 import org.jetbrains.kotlin.codegen.DESTRUCTURED_LAMBDA_ARGUMENT_VARIABLE_PREFIX
 import org.jetbrains.kotlin.codegen.coroutines.CONTINUATION_PARAMETER_NAME
 import org.jetbrains.kotlin.codegen.coroutines.CONTINUATION_VARIABLE_NAME
 import org.jetbrains.kotlin.codegen.inline.INLINE_FUN_VAR_SUFFIX
 import org.jetbrains.kotlin.codegen.inline.isFakeLocalVariableForInline
-import org.jetbrains.kotlin.idea.debugger.evaluate.THIS_NAME
 import org.jetbrains.kotlin.idea.debugger.evaluate.VariableFinder
 import org.jetbrains.kotlin.utils.getSafe
 import java.lang.reflect.Modifier
@@ -58,7 +58,7 @@ class KotlinStackFrame(frame: StackFrameProxyImpl) : JavaStackFrame(StackFrameDe
         }
 
         val (thisReferences, otherVariables) = visibleVariables
-            .partition { it.name() == AsmUtil.THIS || it is ThisLocalVariable }
+            .partition { it.name() == THIS || it is ThisLocalVariable }
 
         if (!removeSyntheticThisObject(evaluationContext, children) && thisReferences.isNotEmpty()) {
             val thisLabels = thisReferences.asSequence()
@@ -198,7 +198,8 @@ class KotlinStackFrame(frame: StackFrameProxyImpl) : JavaStackFrame(StackFrameDe
         val (thisVariables, otherVariables) = allVisibleVariables.asSequence()
             .filter { !isHidden(it, inlineDepth) }
             .partition {
-                it.name() == AsmUtil.THIS
+                it.name() == THIS
+                        || it.name() == AsmUtil.getCapturedFieldName(AsmUtil.THIS)
                         || it.name().startsWith(AsmUtil.LABELED_THIS_PARAMETER)
                         || (VariableFinder.inlinedThisRegex.matches(it.name()))
             }
@@ -207,7 +208,7 @@ class KotlinStackFrame(frame: StackFrameProxyImpl) : JavaStackFrame(StackFrameDe
             .sortedByDescending { it.variable }
             .let { it.firstOrNull() to it.drop(1) }
 
-        val remappedMainThis = mainThis?.clone(AsmUtil.THIS, null)
+        val remappedMainThis = mainThis?.clone(THIS, null)
         val remappedOther = (otherThis + otherVariables).map { it.remapVariableNameIfNeeded() }
         return (listOfNotNull(remappedMainThis) + remappedOther).sortedBy { it.variable }
     }
@@ -224,12 +225,14 @@ class KotlinStackFrame(frame: StackFrameProxyImpl) : JavaStackFrame(StackFrameDe
     private fun LocalVariableProxyImpl.remapVariableNameIfNeeded(): LocalVariableProxyImpl {
         val name = this.name().dropInlineSuffix()
 
+        @Suppress("ConvertToStringTemplate")
         return when {
             isLabeledThisReference() -> {
                 val label = name.drop(AsmUtil.LABELED_THIS_PARAMETER.length)
                 clone(getThisName(label), label)
             }
-            name == AsmUtil.RECEIVER_PARAMETER_NAME -> clone(AsmUtil.THIS + " (receiver)", null)
+            name == AsmUtil.getCapturedFieldName(AsmUtil.THIS) -> clone(THIS + " (outer)", null)
+            name == AsmUtil.RECEIVER_PARAMETER_NAME -> clone(THIS + " (receiver)", null)
             VariableFinder.inlinedThisRegex.matches(name) -> {
                 val label = generateThisLabel(frame.getValue(this)?.type())
                 if (label != null) {
@@ -268,7 +271,7 @@ class KotlinStackFrame(frame: StackFrameProxyImpl) : JavaStackFrame(StackFrameDe
     }
 
     private fun getThisName(label: String): String {
-        return "$THIS_NAME (@$label)"
+        return "$THIS (@$label)"
     }
 
     private fun LocalVariableProxyImpl.clone(name: String, label: String?): LocalVariableProxyImpl {

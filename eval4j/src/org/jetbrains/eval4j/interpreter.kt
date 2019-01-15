@@ -46,6 +46,21 @@ interface Eval {
     fun invokeMethod(instance: Value, methodDesc: MethodDescription, arguments: List<Value>, invokespecial: Boolean = false): Value
 }
 
+fun Eval.boxType(value: Value): Value {
+    val method = when (value.asmType) {
+        Type.INT_TYPE -> MethodDescription("java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false)
+        Type.BYTE_TYPE -> MethodDescription("java/lang/Byte", "valueOf", "(B)Ljava/lang/Byte;", false)
+        Type.SHORT_TYPE -> MethodDescription("java/lang/Short", "valueOf", "(S)Ljava/lang/Short;", false)
+        Type.LONG_TYPE -> MethodDescription("java/lang/Long", "valueOf", "(J)Ljava/lang/Long;", false)
+        Type.BOOLEAN_TYPE -> MethodDescription("java/lang/Boolean", "valueOf", "(Z)Ljava/lang/Boolean;", false)
+        Type.CHAR_TYPE -> MethodDescription("java/lang/Character", "valueOf", "(C)Ljava/lang/Character;", false)
+        Type.FLOAT_TYPE -> MethodDescription("java/lang/Float", "valueOf", "(F)Ljava/lang/Float;", false)
+        Type.DOUBLE_TYPE -> MethodDescription("java/lang/Double", "valueOf", "(D)Ljava/lang/Double;", false)
+        else -> throw UnsupportedOperationException("Couldn't box non-primitive type ${value.asmType.internalName}")
+    }
+    return invokeStaticMethod(method, listOf(value))
+}
+
 class SingleInstructionInterpreter(private val eval: Eval) : Interpreter<Value>(API_VERSION) {
     override fun newValue(type: Type?): Value? {
         if (type == null) {
