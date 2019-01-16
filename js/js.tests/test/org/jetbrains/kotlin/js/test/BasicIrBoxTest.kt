@@ -113,6 +113,7 @@ abstract class BasicIrBoxTest(
             filesToCompile,
             config.configuration,
             FqName((testPackage?.let { "$it." } ?: "") + testFunction),
+            false,
             dependencies,
             irDependencies,
             runtimeResult.moduleDescriptor as ModuleDescriptorImpl
