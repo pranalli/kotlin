@@ -59,7 +59,7 @@ class KotlinStackFrame(frame: StackFrameProxyImpl) : JavaStackFrame(StackFrameDe
         val (thisReferences, otherVariables) = visibleVariables
             .partition { it.name() == AsmUtil.THIS || it is ThisLocalVariable }
 
-        if (!removeThisObjectForContinuation(evaluationContext, children) && thisReferences.isNotEmpty()) {
+        if (!removeSyntheticThisObject(evaluationContext, children) && thisReferences.isNotEmpty()) {
             val thisLabels = thisReferences.asSequence()
                 .filterIsInstance<ThisLocalVariable>()
                 .mapNotNullTo(hashSetOf()) { it.label }
@@ -71,14 +71,21 @@ class KotlinStackFrame(frame: StackFrameProxyImpl) : JavaStackFrame(StackFrameDe
         otherVariables.forEach(::addItem)
     }
 
-    private fun removeThisObjectForContinuation(evaluationContext: EvaluationContextImpl, children: XValueChildrenList): Boolean {
+    private fun removeSyntheticThisObject(evaluationContext: EvaluationContextImpl, children: XValueChildrenList): Boolean {
         val thisObject = evaluationContext.frameProxy?.thisObject() ?: return false
-        if (!thisObject.type().isSubtype(VariableFinder.CONTINUATION_TYPE)) {
-            return false
+
+
+        if (thisObject.type().isSubtype(VariableFinder.CONTINUATION_TYPE)) {
+            ExistingInstanceThis.find(children)?.remove()
+            return true
         }
 
-        ExistingInstanceThis.find(children)?.remove()
-        return true
+        if (thisObject.type().isSubtype(Function::class.java.name)) {
+            ExistingInstanceThis.find(children)?.remove()
+            return true
+        }
+
+        return false
     }
 
     private fun remapThisObjectForOuterThis(
