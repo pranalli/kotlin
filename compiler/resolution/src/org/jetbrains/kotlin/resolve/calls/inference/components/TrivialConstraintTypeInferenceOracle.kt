@@ -16,6 +16,10 @@ class TrivialConstraintTypeInferenceOracle {
         // TODO: probably we also can take into account `T <: Any(?)` constraints
         return constraint.kind == ConstraintKind.LOWER && constraint.type.isNothingOrNullableNothing()
     }
+
+    fun isSuitableResultedType(resultType: UnwrappedType): Boolean {
+        return !resultType.isNothingOrNullableNothing()
+    }
 }
 
 private fun UnwrappedType.isNothingOrNullableNothing(): Boolean =
