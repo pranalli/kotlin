@@ -9962,9 +9962,19 @@ public class DiagnosticsTestGenerated extends AbstractDiagnosticsTest {
                     runTest("compiler/testData/diagnostics/tests/inference/nothingType/complexDependancyOnVariableWithTrivialConstraint.kt");
                 }
 
+                @TestMetadata("generateConstraintWithInnerNothingType.kt")
+                public void testGenerateConstraintWithInnerNothingType() throws Exception {
+                    runTest("compiler/testData/diagnostics/tests/inference/nothingType/generateConstraintWithInnerNothingType.kt");
+                }
+
                 @TestMetadata("lambdaNothingAndExpectedType.kt")
                 public void testLambdaNothingAndExpectedType() throws Exception {
                     runTest("compiler/testData/diagnostics/tests/inference/nothingType/lambdaNothingAndExpectedType.kt");
+                }
+
+                @TestMetadata("nestedLambdaInferenceWithIncorporationOfVariables.kt")
+                public void testNestedLambdaInferenceWithIncorporationOfVariables() throws Exception {
+                    runTest("compiler/testData/diagnostics/tests/inference/nothingType/nestedLambdaInferenceWithIncorporationOfVariables.kt");
                 }
 
                 @TestMetadata("nothingWithCallableReference.kt")

@@ -1,0 +1,3 @@
+package
+
+public val configurations: kotlin.collections.List<kotlin.Pair<kotlin.Int, kotlin.collections.Map<kotlin.Int, kotlin.collections.List<() -> kotlin.Int>>>>
