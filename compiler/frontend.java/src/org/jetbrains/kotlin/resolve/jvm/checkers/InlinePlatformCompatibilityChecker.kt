@@ -76,7 +76,8 @@ class InlinePlatformCompatibilityChecker(val jvmTarget: JvmTarget) : CallChecker
         fun getBytecodeVersionIfDeserializedDescriptor(funOrProperty: DeclarationDescriptor): Int? {
             if (funOrProperty !is DeserializedCallableMemberDescriptor) return null
 
-            val containingDeclaration = funOrProperty.containingDeclaration as ClassOrPackageFragmentDescriptor
+            val realDeclarationIfFound = funOrProperty.getConcreateDeclarationForInline()
+            val containingDeclaration = realDeclarationIfFound.containingDeclaration as ClassOrPackageFragmentDescriptor
 
             val source = containingDeclaration.source
             val binaryClass =
@@ -87,6 +88,19 @@ class InlinePlatformCompatibilityChecker(val jvmTarget: JvmTarget) : CallChecker
                 } as? FileBasedKotlinClass ?: return null
 
             return binaryClass.classVersion
+        }
+
+        private fun CallableMemberDescriptor.getConcreateDeclarationForInline(): CallableMemberDescriptor {
+            if (!this.kind.isReal) {
+                val superImplementation = overriddenDescriptors.firstOrNull {
+                    val containingDeclaration = it.containingDeclaration
+                    !DescriptorUtils.isInterface(containingDeclaration) && !DescriptorUtils.isAnnotationClass(containingDeclaration)
+                }
+                superImplementation?.let {
+                    return it.getConcreateDeclarationForInline()
+                }
+            }
+            return this
         }
     }
 }
