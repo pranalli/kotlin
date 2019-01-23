@@ -10,9 +10,11 @@ import org.jetbrains.kotlin.codegen.CalculatedCodeFragmentCodegenInfo.Calculated
 import org.jetbrains.kotlin.codegen.CodeFragmentCodegenInfo.IParameter
 import org.jetbrains.kotlin.codegen.binding.MutableClosure
 import org.jetbrains.kotlin.codegen.context.*
+import org.jetbrains.kotlin.codegen.context.LocalLookup.*
 import org.jetbrains.kotlin.codegen.state.GenerationState
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper
 import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin.Companion.NO_ORIGIN
@@ -77,8 +79,12 @@ private class CodeFragmentContext(
         @Suppress("UseWithIndex")
         for ((parameter, _, parameterDescriptor) in calculatedInfo.parameters) {
             if (parameter.descriptor == target) {
+                // Value is already captured
+                closure.captureVariables[parameterDescriptor]?.let { return it.innerValue }
+
+                // Capture new value
                 val closureAsmType = typeMapper.mapType(closure.closureClass)
-                return LocalLookup.LocalLookupCase.VAR.innerValue(parameterDescriptor, localLookup, state, closure, closureAsmType)
+                return LocalLookupCase.VAR.innerValue(parameterDescriptor, localLookup, state, closure, closureAsmType)
             }
             index++
         }
@@ -159,6 +165,15 @@ class CodeFragmentCodegen private constructor(
                     return super.generateThisOrOuter(calleeContainingClass, isSuper)
                 }
 
+                override fun findCapturedValue(descriptor: DeclarationDescriptor): StackValue? {
+                    for ((_, asmType, parameterDescriptor, index) in parameters) {
+                        if (parameterDescriptor == descriptor) {
+                            return StackValue.local(index, asmType, parameterDescriptor.type)
+                        }
+                    }
+                    return super.findCapturedValue(descriptor)
+                }
+
                 override fun generateExtensionReceiver(descriptor: CallableDescriptor): StackValue {
                     info.interceptor.generateExtensionThis(descriptor, typeMapper)?.let { return it }
                     return super.generateExtensionReceiver(descriptor)
@@ -175,11 +190,6 @@ class CodeFragmentCodegen private constructor(
                 override fun visitThisExpression(expression: KtThisExpression, receiver: StackValue?): StackValue {
                     info.interceptor.generateReference(expression, typeMapper)?.let { return it }
                     return super.visitThisExpression(expression, receiver)
-                }
-
-                override fun visitSuperExpression(expression: KtSuperExpression, data: StackValue?): StackValue {
-                    info.interceptor.generateReference(expression, typeMapper)?.let { return it }
-                    return super.visitSuperExpression(expression, data)
                 }
             }
 
@@ -232,7 +242,7 @@ class CodeFragmentCodegen private constructor(
 
             @Suppress("UseWithIndex")
             for ((infoParameter, asmParameter) in info.parameters.zip(methodSignature.valueParameters)) {
-                val asmType = typeMapper.getSharedVarType(infoParameter.descriptor) ?: asmParameter.asmType
+                val asmType = getSharedTypeIfApplicable(infoParameter.descriptor, typeMapper) ?: asmParameter.asmType
                 val parameterDescriptor = info.methodDescriptor.valueParameters[parameterIndex]
                 parameters += CalculatedParameter(infoParameter, asmType, parameterDescriptor, stackIndex)
                 stackIndex += if (asmType == Type.DOUBLE_TYPE || asmType == Type.LONG_TYPE) 2 else 1
@@ -240,6 +250,13 @@ class CodeFragmentCodegen private constructor(
             }
 
             return CalculatedCodeFragmentCodegenInfo(parameters, methodSignature.returnType)
+        }
+
+        fun getSharedTypeIfApplicable(descriptor: DeclarationDescriptor, typeMapper: KotlinTypeMapper): Type? {
+            return when (descriptor) {
+                is LocalVariableDescriptor -> typeMapper.getSharedVarType(descriptor)
+                else -> null
+            }
         }
     }
 }

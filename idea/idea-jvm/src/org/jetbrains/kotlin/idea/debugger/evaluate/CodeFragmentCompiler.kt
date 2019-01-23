@@ -8,6 +8,7 @@ package org.jetbrains.kotlin.idea.debugger.evaluate
 import org.jetbrains.kotlin.backend.common.output.OutputFile
 import org.jetbrains.kotlin.caches.resolve.KotlinCacheService
 import org.jetbrains.kotlin.codegen.*
+import org.jetbrains.kotlin.codegen.CodeFragmentCodegen.Companion.getSharedTypeIfApplicable
 import org.jetbrains.kotlin.codegen.extensions.ExpressionCodegenExtension.Context as InCo
 import org.jetbrains.kotlin.codegen.state.GenerationState
 import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper
@@ -88,7 +89,7 @@ object CodeFragmentCompiler {
             classDescriptor, methodDescriptor, parameterInfo.parameters,
             object : CodeFragmentCodegenInfo.Interceptor {
                 private fun getStackValue(parameter: Parameter<*>, typeMapper: KotlinTypeMapper): StackValue {
-                    val sharedVarType = typeMapper.getSharedVarType(parameter.descriptor)
+                    val sharedVarType = getSharedTypeIfApplicable(parameter.descriptor, typeMapper)
                     if (sharedVarType != null) {
                         val unwrappedType = typeMapper.mapType(parameter.type)
                         return StackValue.shared(parameter.index, unwrappedType)
@@ -143,7 +144,7 @@ object CodeFragmentCompiler {
         val typeMapper = state.typeMapper
         val asmSignature = typeMapper.mapSignatureSkipGeneric(methodDescriptor)
         val asmParameters = parameters.zip(asmSignature.valueParameters).map { (param, sigParam) ->
-            typeMapper.getSharedVarType(param.descriptor) ?: sigParam.asmType
+            getSharedTypeIfApplicable(param.descriptor, typeMapper) ?: sigParam.asmType
         }
 
         return MethodSignature(asmParameters, asmSignature.returnType)

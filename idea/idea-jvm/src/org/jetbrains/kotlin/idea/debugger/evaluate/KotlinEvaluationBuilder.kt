@@ -334,7 +334,7 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
             val result = variableFinder.find(parameter, asmType)
 
             if (result == null) {
-                val name = parameter.rawString
+                val name = parameter.debugString
 
                 if (parameter in compiledData.compilationResult.parameterInfo.crossingBounds) {
                     evaluationException("'$name' is not captured")

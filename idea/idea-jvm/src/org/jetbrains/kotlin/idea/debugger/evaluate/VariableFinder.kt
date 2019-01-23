@@ -24,7 +24,6 @@ import org.jetbrains.kotlin.idea.util.attachment.mergeAttachments
 import org.jetbrains.kotlin.load.java.JvmAbi
 import org.jetbrains.kotlin.load.java.JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT
 import org.jetbrains.kotlin.load.java.JvmAbi.LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION
-import org.jetbrains.kotlin.resolve.calls.checkers.COROUTINE_CONTEXT_1_3_FQ_NAME
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName
 import kotlin.coroutines.Continuation
 import org.jetbrains.org.objectweb.asm.Type as AsmType
@@ -34,7 +33,6 @@ class VariableFinder private constructor(private val context: ExecutionContext, 
     companion object {
         private const val USE_UNSAFE_FALLBACK = false
 
-        private val COROUTINE_CONTEXT_SIMPLE_NAME = COROUTINE_CONTEXT_1_3_FQ_NAME.shortName().asString()
         val CONTINUATION_TYPE: AsmType = AsmType.getType(Continuation::class.java)
 
         val SUSPEND_LAMBDA_CLASSES = listOf(
@@ -101,7 +99,6 @@ class VariableFinder private constructor(private val context: ExecutionContext, 
             if (inlineFunVariables.isEmpty()) {
                 return 0
             }
-            listOf("A").map {}
 
             val closestInlineFun = inlineFunVariables.maxBy { it.variable }!!.variable
             val inlineLambdaDepth = variables
@@ -187,6 +184,7 @@ class VariableFinder private constructor(private val context: ExecutionContext, 
             }
             is Parameter.LocalFunction -> findLocalFunction(VariableKind.LocalFunction(parameter.name, parameter.functionIndex, asmType))
             is Parameter.DispatchReceiver -> findDispatchThis(VariableKind.OuterClassThis(asmType))
+            is Parameter.CoroutineContext -> findCoroutineContext()
         }
     }
 
@@ -195,13 +193,6 @@ class VariableFinder private constructor(private val context: ExecutionContext, 
 
         // Local variables – direct search
         findLocalVariable(variables, kind, kind.name)?.let { return it }
-
-        if (kind.name == COROUTINE_CONTEXT_SIMPLE_NAME) {
-            val coroutineContext = findCoroutineContext()?.takeIf { kind.typeMatches(it.type()) }
-            if (coroutineContext != null) {
-                return Result(coroutineContext)
-            }
-        }
 
         // Recursive search in local receiver variables
         findCapturedVariableInReceiver(variables, kind)?.let { return it }
@@ -320,9 +311,10 @@ class VariableFinder private constructor(private val context: ExecutionContext, 
         return declaringType.name().endsWith(JvmAbi.DEFAULT_IMPLS_SUFFIX)
     }
 
-    private fun findCoroutineContext(): ObjectReference? {
+    private fun findCoroutineContext(): Result? {
         val method = frameProxy.safeLocation()?.safeMethod() ?: return null
-        return findCoroutineContextForLambda(method) ?: findCoroutineContextForMethod(method)
+        val result = findCoroutineContextForLambda(method) ?: findCoroutineContextForMethod(method) ?: return null
+        return Result(result)
     }
 
     private fun findCoroutineContextForLambda(method: Method): ObjectReference? {

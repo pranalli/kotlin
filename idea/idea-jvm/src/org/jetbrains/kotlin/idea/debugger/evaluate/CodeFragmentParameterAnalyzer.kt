@@ -19,6 +19,8 @@ import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.*
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
+import org.jetbrains.kotlin.resolve.calls.checkers.COROUTINE_CONTEXT_1_3_FQ_NAME
+import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameSafe
 import org.jetbrains.kotlin.resolve.scopes.receivers.ExtensionReceiver
 import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitClassReceiver
 import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitReceiver
@@ -37,7 +39,7 @@ class CodeFragmentParameterInfo(
         val index: Int,
         val type: KotlinType,
         override val descriptor: T,
-        var rawString: String
+        var debugString: String
     ) : CodeFragmentCodegenInfo.IParameter {
         class Ordinary(index: Int, type: KotlinType, descriptor: ValueDescriptor, val name: String) :
             Parameter<ValueDescriptor>(index, type, descriptor, name)
@@ -50,6 +52,9 @@ class CodeFragmentParameterInfo(
 
         class DispatchReceiver(index: Int, type: KotlinType, descriptor: ClassDescriptor) :
             Parameter<ClassDescriptor>(index, type, descriptor, THIS)
+
+        class CoroutineContext(index: Int, type: KotlinType, descriptor: PropertyDescriptor) :
+            Parameter<PropertyDescriptor>(index, type, descriptor, COROUTINE_CONTEXT_1_3_FQ_NAME.shortName().asString())
 
         class LocalFunction(
             index: Int, type: KotlinType, descriptor: FunctionDescriptor,
@@ -201,6 +206,8 @@ class CodeFragmentParameterAnalyzer(private val codeFragment: KtCodeFragment, pr
     }
 
     private fun processSimpleNameExpression(expression: KtSimpleNameExpression, target: DeclarationDescriptor): Parameter<*>? {
+        processCoroutineContextCall(expression, target)?.let { return it }
+
         if ((target as? DeclarationDescriptorWithVisibility)?.visibility != Visibilities.LOCAL) {
             return null
         }
@@ -220,6 +227,17 @@ class CodeFragmentParameterAnalyzer(private val codeFragment: KtCodeFragment, pr
             }
             else -> null
         }?.also { mappings[expression] = it }
+    }
+
+    private fun processCoroutineContextCall(expression: KtSimpleNameExpression, target: DeclarationDescriptor): Parameter<*>? {
+        if (target is PropertyDescriptor && target.fqNameSafe == COROUTINE_CONTEXT_1_3_FQ_NAME) {
+            return parameters.getOrPut(target) {
+                val type = target.type
+                Parameter.CoroutineContext(nextIndex(type), type, target)
+            }.also { mappings[expression] = it }
+        }
+
+        return null
     }
 
     private fun doesCrossInlineBounds(expression: PsiElement, declaration: PsiElement): Boolean {
