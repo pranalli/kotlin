@@ -11,7 +11,6 @@ import org.jetbrains.kotlin.codegen.*
 import org.jetbrains.kotlin.codegen.CodeFragmentCodegen.Companion.getSharedTypeIfApplicable
 import org.jetbrains.kotlin.codegen.extensions.ExpressionCodegenExtension.Context as InCo
 import org.jetbrains.kotlin.codegen.state.GenerationState
-import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.languageVersionSettings
 import org.jetbrains.kotlin.descriptors.*
@@ -71,12 +70,8 @@ object CodeFragmentCompiler {
         compilerConfiguration.languageVersionSettings = codeFragment.languageVersionSettings
 
         val generationState = GenerationState.Builder(
-            project,
-            ClassBuilderFactories.TEST,
-            moduleDescriptorWrapper,
-            bindingContext,
-            listOf(codeFragment),
-            compilerConfiguration
+            project, ClassBuilderFactories.TEST, moduleDescriptorWrapper,
+            bindingContext, listOf(codeFragment), compilerConfiguration
         ).build()
 
         val parameterInfo = CodeFragmentParameterAnalyzer(codeFragment, bindingContext).analyze()
@@ -85,46 +80,7 @@ object CodeFragmentCompiler {
             parameterInfo, returnType, moduleDescriptorWrapper.packageFragmentForEvaluator
         )
 
-        val codegenInfo = CodeFragmentCodegenInfo(
-            classDescriptor, methodDescriptor, parameterInfo.parameters,
-            object : CodeFragmentCodegenInfo.Interceptor {
-                private fun getStackValue(parameter: Parameter<*>, typeMapper: KotlinTypeMapper): StackValue {
-                    val sharedVarType = getSharedTypeIfApplicable(parameter.descriptor, typeMapper)
-                    if (sharedVarType != null) {
-                        val unwrappedType = typeMapper.mapType(parameter.type)
-                        return StackValue.shared(parameter.index, unwrappedType)
-                    }
-
-                    return StackValue.local(parameter.index, typeMapper.mapType(parameter.type), parameter.type)
-                }
-
-                override fun generateReference(expression: KtExpression, typeMapper: KotlinTypeMapper): StackValue? {
-                    val parameter = parameterInfo.mappings[expression] ?: return null
-                    return getStackValue(parameter, typeMapper)
-                }
-
-                override fun generateExtensionThis(callable: CallableDescriptor, typeMapper: KotlinTypeMapper): StackValue? {
-                    for (parameter in parameterInfo.extensionReceivers) {
-                        if (parameter.descriptor == callable) {
-                            return getStackValue(parameter, typeMapper)
-                        }
-                    }
-
-                    return null
-                }
-
-                override fun generateOuterThis(containingClass: ClassDescriptor, typeMapper: KotlinTypeMapper): StackValue? {
-                    for (parameter in parameterInfo.dispatchReceivers) {
-                        if (parameter.descriptor == containingClass) {
-                            return getStackValue(parameter, typeMapper)
-                        }
-                    }
-
-                    return null
-                }
-            }
-        )
-
+        val codegenInfo = CodeFragmentCodegenInfo(classDescriptor, methodDescriptor, parameterInfo.parameters)
         CodeFragmentCodegen.setCodeFragmentInfo(codeFragment, codegenInfo)
 
         KotlinCodegenFacade.compileCorrectFiles(generationState, CompilationErrorHandler.THROW_EXCEPTION)
@@ -144,7 +100,7 @@ object CodeFragmentCompiler {
         val typeMapper = state.typeMapper
         val asmSignature = typeMapper.mapSignatureSkipGeneric(methodDescriptor)
         val asmParameters = parameters.zip(asmSignature.valueParameters).map { (param, sigParam) ->
-            getSharedTypeIfApplicable(param.descriptor, typeMapper) ?: sigParam.asmType
+            getSharedTypeIfApplicable(param.targetDescriptor, typeMapper) ?: sigParam.asmType
         }
 
         return MethodSignature(asmParameters, asmSignature.returnType)
@@ -194,7 +150,7 @@ object CodeFragmentCompiler {
         val parameters = parameterInfo.parameters.mapIndexed { index, parameter ->
             ValueParameterDescriptorImpl(
                 methodDescriptor, null, index, Annotations.EMPTY, Name.identifier("p$index"),
-                parameter.type, false, false, false, null, SourceElement.NO_SOURCE
+                parameter.targetType, false, false, false, null, SourceElement.NO_SOURCE
             )
         }
 

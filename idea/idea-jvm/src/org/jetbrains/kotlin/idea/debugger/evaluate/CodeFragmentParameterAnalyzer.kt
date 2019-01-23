@@ -26,48 +26,35 @@ import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitClassReceiver
 import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitReceiver
 import org.jetbrains.kotlin.resolve.source.getPsi
 import org.jetbrains.kotlin.types.KotlinType
-import org.jetbrains.kotlin.types.typeUtil.builtIns
 
-class CodeFragmentParameterInfo(
-    val parameters: List<Parameter<*>>,
-    val mappings: Map<KtElement, Parameter<*>>,
-    val dispatchReceivers: Set<Parameter.DispatchReceiver>,
-    val extensionReceivers: Set<Parameter.ExtensionReceiver>,
-    val crossingBounds: Set<Parameter<*>>
-) {
+class CodeFragmentParameterInfo(val parameters: List<Parameter<*>>, val crossingBounds: Set<Parameter<*>>) {
     sealed class Parameter<T : DeclarationDescriptor>(
-        val index: Int,
-        val type: KotlinType,
-        override val descriptor: T,
+        override val targetType: KotlinType,
+        override val targetDescriptor: T,
         var debugString: String
     ) : CodeFragmentCodegenInfo.IParameter {
-        class Ordinary(index: Int, type: KotlinType, descriptor: ValueDescriptor, val name: String) :
-            Parameter<ValueDescriptor>(index, type, descriptor, name)
+        class Ordinary(type: KotlinType, descriptor: ValueDescriptor, val name: String) :
+            Parameter<ValueDescriptor>(type, descriptor, name)
 
         @Suppress("ConvertToStringTemplate")
         class ExtensionReceiver(
-            index: Int, type: KotlinType, descriptor: CallableDescriptor,
+            type: KotlinType, descriptor: ReceiverParameterDescriptor,
             val label: String, val isFakeJavaReceiver: Boolean = false
-        ) : Parameter<CallableDescriptor>(index, type, descriptor, THIS + "@" + label)
+        ) : Parameter<ReceiverParameterDescriptor>(type, descriptor, THIS + "@" + label)
 
-        class DispatchReceiver(index: Int, type: KotlinType, descriptor: ClassDescriptor) :
-            Parameter<ClassDescriptor>(index, type, descriptor, THIS)
+        class DispatchReceiver(type: KotlinType, descriptor: ClassDescriptor) :
+            Parameter<ClassDescriptor>(type, descriptor, THIS)
 
-        class CoroutineContext(index: Int, type: KotlinType, descriptor: PropertyDescriptor) :
-            Parameter<PropertyDescriptor>(index, type, descriptor, COROUTINE_CONTEXT_1_3_FQ_NAME.shortName().asString())
+        class CoroutineContext(type: KotlinType, descriptor: PropertyDescriptor) :
+            Parameter<PropertyDescriptor>(type, descriptor, COROUTINE_CONTEXT_1_3_FQ_NAME.shortName().asString())
 
-        class LocalFunction(
-            index: Int, type: KotlinType, descriptor: FunctionDescriptor,
-            val name: String, var functionIndex: Int = 0
-        ) : Parameter<FunctionDescriptor>(index, type, descriptor, name)
+        class LocalFunction(type: KotlinType, descriptor: FunctionDescriptor, val name: String, var functionIndex: Int = 0) :
+            Parameter<FunctionDescriptor>(type, descriptor, name)
     }
 }
 
 class CodeFragmentParameterAnalyzer(private val codeFragment: KtCodeFragment, private val bindingContext: BindingContext) {
-    private val mappings = hashMapOf<KtElement, Parameter<*>>()
     private val parameters = LinkedHashMap<DeclarationDescriptor, Parameter<*>>()
-    private val dispatchReceivers = mutableSetOf<Parameter.DispatchReceiver>()
-    private val extensionReceivers = mutableSetOf<Parameter.ExtensionReceiver>()
     private val crossingBounds = mutableSetOf<Parameter<*>>()
 
     fun analyze(): CodeFragmentParameterInfo {
@@ -101,7 +88,7 @@ class CodeFragmentParameterAnalyzer(private val codeFragment: KtCodeFragment, pr
                     }
                     else -> {
                         descriptor = resolvedCall.resultingDescriptor
-                        parameter = processSimpleNameExpression(expression, descriptor)
+                        parameter = processSimpleNameExpression(descriptor)
                     }
                 }
 
@@ -140,7 +127,7 @@ class CodeFragmentParameterAnalyzer(private val codeFragment: KtCodeFragment, pr
             }
         }, Unit)
 
-        return CodeFragmentParameterInfo(parameters.values.toList(), mappings, dispatchReceivers, extensionReceivers, crossingBounds)
+        return CodeFragmentParameterInfo(parameters.values.toList(), crossingBounds)
     }
 
     private fun isFakeFunctionForJavaContext(descriptor: CallableDescriptor): Boolean {
@@ -163,10 +150,10 @@ class CodeFragmentParameterAnalyzer(private val codeFragment: KtCodeFragment, pr
         }
 
         val actualLabel = label ?: getLabel(descriptor) ?: return null
+        val receiverParameter = descriptor.extensionReceiverParameter ?: return null
 
         return parameters.getOrPut(descriptor) {
-            Parameter.ExtensionReceiver(nextIndex(receiverType), receiverType, descriptor, actualLabel)
-                .also { extensionReceivers += it }
+            Parameter.ExtensionReceiver(receiverType, receiverParameter, actualLabel)
         }
     }
 
@@ -177,21 +164,19 @@ class CodeFragmentParameterAnalyzer(private val codeFragment: KtCodeFragment, pr
 
         return parameters.getOrPut(descriptor) {
             val type = descriptor.defaultType
-            Parameter.DispatchReceiver(nextIndex(type), type, descriptor)
-                .also { dispatchReceivers += it }
+            Parameter.DispatchReceiver(type, descriptor)
         }
     }
 
     private fun processFakeJavaCodeReceiver(descriptor: CallableDescriptor): Parameter<*>? {
-        val thisType = descriptor
+        val receiverParameter = descriptor
             .takeIf { descriptor is FunctionDescriptor }
-            ?.extensionReceiverParameter?.type
+            ?.extensionReceiverParameter
             ?: return null
 
         return parameters.getOrPut(descriptor) {
             val label = FAKE_JAVA_CONTEXT_FUNCTION_NAME
-            Parameter.ExtensionReceiver(nextIndex(thisType), thisType, descriptor, label, isFakeJavaReceiver = true)
-                .also { extensionReceivers += it }
+            Parameter.ExtensionReceiver(receiverParameter.type, receiverParameter, label, isFakeJavaReceiver = true)
         }
     }
 
@@ -205,8 +190,8 @@ class CodeFragmentParameterAnalyzer(private val codeFragment: KtCodeFragment, pr
         return callableDescriptor.name.takeIf { !it.isSpecial }?.asString()
     }
 
-    private fun processSimpleNameExpression(expression: KtSimpleNameExpression, target: DeclarationDescriptor): Parameter<*>? {
-        processCoroutineContextCall(expression, target)?.let { return it }
+    private fun processSimpleNameExpression(target: DeclarationDescriptor): Parameter<*>? {
+        processCoroutineContextCall(target)?.let { return it }
 
         if ((target as? DeclarationDescriptorWithVisibility)?.visibility != Visibilities.LOCAL) {
             return null
@@ -216,25 +201,25 @@ class CodeFragmentParameterAnalyzer(private val codeFragment: KtCodeFragment, pr
             is FunctionDescriptor -> {
                 val type = SingleAbstractMethodUtils.getFunctionTypeForAbstractMethod(target, false)
                 parameters.getOrPut(target) {
-                    Parameter.LocalFunction(nextIndex(type), type, target, target.name.asString())
+                    Parameter.LocalFunction(type, target, target.name.asString())
                 }
             }
             is ValueDescriptor -> {
                 parameters.getOrPut(target) {
                     val type = target.type
-                    Parameter.Ordinary(nextIndex(type), type, target, target.name.asString())
+                    Parameter.Ordinary(type, target, target.name.asString())
                 }
             }
             else -> null
-        }?.also { mappings[expression] = it }
+        }
     }
 
-    private fun processCoroutineContextCall(expression: KtSimpleNameExpression, target: DeclarationDescriptor): Parameter<*>? {
+    private fun processCoroutineContextCall(target: DeclarationDescriptor): Parameter<*>? {
         if (target is PropertyDescriptor && target.fqNameSafe == COROUTINE_CONTEXT_1_3_FQ_NAME) {
             return parameters.getOrPut(target) {
                 val type = target.type
-                Parameter.CoroutineContext(nextIndex(type), type, target)
-            }.also { mappings[expression] = it }
+                Parameter.CoroutineContext(type, target)
+            }
         }
 
         return null
@@ -290,14 +275,5 @@ class CodeFragmentParameterAnalyzer(private val codeFragment: KtCodeFragment, pr
         }
 
         used = true
-    }
-
-    private var nextIndex = 0
-
-    private fun nextIndex(type: KotlinType): Int {
-        val result = nextIndex
-        val builtIns = type.builtIns
-        this.nextIndex += if (builtIns.floatType == type || builtIns.doubleType == type) 2 else 1
-        return result
     }
 }
