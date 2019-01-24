@@ -71,32 +71,39 @@ class CodeFragmentParameterAnalyzer(private val codeFragment: KtCodeFragment, pr
                     return null
                 }
 
-                val extensionReceiver = resolvedCall.extensionReceiver
-                val dispatchReceiver = resolvedCall.dispatchReceiver
-
-                val parameter: Parameter<*>?
-                val descriptor: DeclarationDescriptor
-
-                when {
-                    extensionReceiver is ImplicitReceiver -> {
-                        descriptor = extensionReceiver.declarationDescriptor
-                        parameter = processReceiver(extensionReceiver)
+                fun checkBounds(descriptor: DeclarationDescriptor, parameter: Parameter<*>?) {
+                    if (parameter == null || descriptor !is DeclarationDescriptorWithSource) {
+                        return
                     }
-                    dispatchReceiver is ImplicitReceiver -> {
-                        descriptor = dispatchReceiver.declarationDescriptor
-                        parameter = processReceiver(dispatchReceiver)
-                    }
-                    else -> {
-                        descriptor = resolvedCall.resultingDescriptor
-                        parameter = processSimpleNameExpression(descriptor)
-                    }
-                }
 
-                if (parameter != null && descriptor is DeclarationDescriptorWithSource) {
                     val targetPsi = descriptor.source.getPsi()
                     if (targetPsi != null && doesCrossInlineBounds(expression, targetPsi)) {
                         crossingBounds += parameter
                     }
+                }
+
+                var processed = false
+
+                val extensionReceiver = resolvedCall.extensionReceiver
+                if (extensionReceiver is ImplicitReceiver) {
+                    val descriptor = extensionReceiver.declarationDescriptor
+                    val parameter = processReceiver(extensionReceiver)
+                    checkBounds(descriptor, parameter)
+                    processed = true
+                }
+
+                val dispatchReceiver = resolvedCall.dispatchReceiver
+                if (dispatchReceiver is ImplicitReceiver) {
+                    val descriptor = dispatchReceiver.declarationDescriptor
+                    val parameter = processReceiver(dispatchReceiver)
+                    checkBounds(descriptor, parameter)
+                    processed = true
+                }
+
+                if (!processed) {
+                    val descriptor = resolvedCall.resultingDescriptor
+                    val parameter = processSimpleNameExpression(descriptor)
+                    checkBounds(descriptor, parameter)
                 }
 
                 return null
