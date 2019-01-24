@@ -236,7 +236,7 @@ private class CalculatedCodeFragmentCodegenInfo(val parameters: List<CalculatedP
 
     fun findParameter(target: DeclarationDescriptor): CalculatedParameter? {
         for (parameter in parameters) {
-            if (parameter.targetDescriptor == target) {
+            if (parameter.targetDescriptor == target || parameter.parameterDescriptor == target) {
                 return parameter
             }
         }

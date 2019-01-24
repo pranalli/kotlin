@@ -43,9 +43,9 @@ fun genericClassCast() {
     }
 
     if (true) {
-        val c = ArrayList<String>()
-        c.add("a")
-        // EXPRESSION: c.get(0)
+        val c = ArrayList<Int>()
+        (c as? ArrayList<String>)?.add("a")
+        // EXPRESSION: c.get(0) + 1
         // RESULT: java.lang.ClassCastException : java.lang.String cannot be cast to java.lang.Number
         //Breakpoint!
         val b = 1
