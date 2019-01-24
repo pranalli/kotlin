@@ -11,12 +11,12 @@ import org.jetbrains.kotlin.codegen.*
 import org.jetbrains.kotlin.codegen.CodeFragmentCodegen.Companion.getSharedTypeIfApplicable
 import org.jetbrains.kotlin.codegen.extensions.ExpressionCodegenExtension.Context as InCo
 import org.jetbrains.kotlin.codegen.state.GenerationState
+import org.jetbrains.kotlin.codegen.state.KotlinTypeMapper
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.languageVersionSettings
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
 import org.jetbrains.kotlin.descriptors.impl.*
-import org.jetbrains.kotlin.idea.debugger.evaluate.CodeFragmentParameterInfo.Parameter
 import org.jetbrains.kotlin.idea.debugger.evaluate.classLoading.ClassToLoad
 import org.jetbrains.kotlin.idea.project.languageVersionSettings
 import org.jetbrains.kotlin.idea.util.application.runReadAction
@@ -41,19 +41,20 @@ import org.jetbrains.kotlin.utils.Printer
 import org.jetbrains.org.objectweb.asm.Type
 
 object CodeFragmentCompiler {
-    data class Result(
+    data class CompilationResult(
         val classes: List<ClassToLoad>,
         val parameterInfo: CodeFragmentParameterInfo,
+        val localFunctionSuffixes: Map<CodeFragmentParameter.Dumb, String>,
         val mainMethodSignature: MethodSignature
     )
 
     data class MethodSignature(val parameterTypes: List<Type>, val returnType: Type)
 
-    fun compile(codeFragment: KtCodeFragment, bindingContext: BindingContext, moduleDescriptor: ModuleDescriptor): Result {
+    fun compile(codeFragment: KtCodeFragment, bindingContext: BindingContext, moduleDescriptor: ModuleDescriptor): CompilationResult {
         return runReadAction { doCompile(codeFragment, bindingContext, moduleDescriptor) }
     }
 
-    private fun doCompile(codeFragment: KtCodeFragment, bindingContext: BindingContext, moduleDescriptor: ModuleDescriptor): Result {
+    private fun doCompile(codeFragment: KtCodeFragment, bindingContext: BindingContext, moduleDescriptor: ModuleDescriptor): CompilationResult {
         require(codeFragment is KtBlockCodeFragment || codeFragment is KtExpressionCodeFragment) {
             "Unsupported code fragment type: $codeFragment"
         }
@@ -85,16 +86,39 @@ object CodeFragmentCompiler {
 
         KotlinCodegenFacade.compileCorrectFiles(generationState, CompilationErrorHandler.THROW_EXCEPTION)
 
-        val methodSignature = getMethodSignature(methodDescriptor, parameterInfo.parameters, generationState)
         val classes = generationState.factory.asList().filterClassFiles()
             .map { ClassToLoad(it.internalClassName, it.relativePath, it.asByteArray()) }
 
-        return Result(classes, parameterInfo, methodSignature)
+        val methodSignature = getMethodSignature(methodDescriptor, parameterInfo.parameters, generationState)
+        val functionSuffixes = getLocalFunctionSuffixes(parameterInfo.parameters, generationState.typeMapper)
+
+        generationState.destroy()
+
+        return CompilationResult(classes, parameterInfo, functionSuffixes, methodSignature)
+    }
+
+    private fun getLocalFunctionSuffixes(
+        parameters: List<CodeFragmentParameter.Smart>,
+        typeMapper: KotlinTypeMapper
+    ): Map<CodeFragmentParameter.Dumb, String> {
+        val result = mutableMapOf<CodeFragmentParameter.Dumb, String>()
+
+        for (parameter in parameters) {
+            if (parameter.kind != CodeFragmentParameter.Kind.LOCAL_FUNCTION) {
+                continue
+            }
+
+            val ownerClassName = typeMapper.mapOwner(parameter.targetDescriptor).internalName
+            val lastDollarIndex = ownerClassName.lastIndexOf('$').takeIf { it >= 0} ?: continue
+            result[parameter.dumb] = ownerClassName.drop(lastDollarIndex)
+        }
+
+        return result
     }
 
     private fun getMethodSignature(
         methodDescriptor: FunctionDescriptor,
-        parameters: List<Parameter<*>>,
+        parameters: List<CodeFragmentParameter.Smart>,
         state: GenerationState
     ): MethodSignature {
         val typeMapper = state.typeMapper
@@ -195,9 +219,6 @@ private class EvaluatorMemberScopeForMethod(private val methodDescriptor: Simple
     }
 }
 
-private val OutputFile.internalClassName: String
-    get() = relativePath.removeSuffix(".class").replace('/', '.')
-
 private class EvaluatorModuleDescriptor(
     val codeFragment: KtCodeFragment,
     val moduleDescriptor: ModuleDescriptor,
@@ -248,3 +269,6 @@ private class EvaluatorModuleDescriptor(
         }
     }
 }
+
+private val OutputFile.internalClassName: String
+    get() = relativePath.removeSuffix(".class").replace('/', '.')

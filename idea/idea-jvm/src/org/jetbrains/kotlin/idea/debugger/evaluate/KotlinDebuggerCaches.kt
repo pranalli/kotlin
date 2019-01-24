@@ -41,7 +41,6 @@ import org.jetbrains.kotlin.idea.caches.resolve.analyzeWithAllCompilerChecks
 import org.jetbrains.kotlin.idea.debugger.BinaryCacheKey
 import org.jetbrains.kotlin.idea.debugger.BytecodeDebugInfo
 import org.jetbrains.kotlin.idea.debugger.createWeakBytecodeDebugInfoStorage
-import org.jetbrains.kotlin.idea.debugger.evaluate.classLoading.ClassToLoad
 import org.jetbrains.kotlin.idea.runInReadActionWithWriteActionPriorityWithPCE
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.psi.KtCodeFragment
@@ -210,15 +209,6 @@ class KotlinDebuggerCaches(project: Project) {
         fun addTypeMapper(file: KtFile, typeMapper: KotlinTypeMapper) {
             getInstance(file.project).cachedTypeMappers.value[file] = typeMapper
         }
-    }
-
-    data class CompiledDataDescriptor(
-        val compilationResult: CodeFragmentCompiler.Result,
-        val sourcePosition: SourcePosition,
-        val parameters: List<Parameter>
-    ) {
-        val mainClass: ClassToLoad
-            get() = compilationResult.classes.first { it.isMainClass }
     }
 
     data class Parameter(val callText: String, val type: KotlinType, val value: Value? = null, val error: EvaluateException? = null)

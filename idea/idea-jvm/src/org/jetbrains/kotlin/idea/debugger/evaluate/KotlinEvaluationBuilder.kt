@@ -55,7 +55,6 @@ import org.jetbrains.kotlin.diagnostics.Severity
 import org.jetbrains.kotlin.diagnostics.rendering.DefaultErrorMessages
 import org.jetbrains.kotlin.idea.caches.resolve.util.getJavaClassDescriptor
 import org.jetbrains.kotlin.idea.debugger.DebuggerUtils
-import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches.*
 import org.jetbrains.kotlin.idea.debugger.evaluate.KotlinDebuggerCaches.Companion.compileCodeFragmentCacheAware
 import org.jetbrains.kotlin.idea.debugger.evaluate.compilingEvaluator.loadClassesSafely
 import org.jetbrains.kotlin.idea.runInReadActionWithWriteActionPriorityWithPCE
@@ -164,7 +163,7 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
 
     private fun evaluateSafe(context: EvaluationContextImpl): Any? {
         val (compiledData, isCompiledDataFromCache) = compileCodeFragmentCacheAware(codeFragment, sourcePosition, ::compileCodeFragment)
-        val classLoaderRef = loadClassesSafely(context, compiledData.compilationResult.classes)
+        val classLoaderRef = loadClassesSafely(context, compiledData.classes)
 
         val thread = context.suspendContext.thread?.threadReference ?: error("Can not find a thread to run evaluation on")
         val invokePolicy = context.suspendContext.getInvokePolicy()
@@ -207,7 +206,7 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
         val moduleDescriptor = analysisResult.moduleDescriptor
 
         val result = CodeFragmentCompiler.compile(codeFragment, bindingContext, moduleDescriptor)
-        return CompiledDataDescriptor(result, sourcePosition, emptyList())
+        return CompiledDataDescriptor.from(result, sourcePosition)
     }
 
     private fun KtCodeFragment.wrapToStringIfNeeded(bindingContext: BindingContext): Boolean {
@@ -307,12 +306,12 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
         block: (List<Value?>) -> T
     ): T {
         // Preload additional classes
-        compiledData.compilationResult.classes
+        compiledData.classes
             .filter { !it.isMainClass }
             .forEach { context.loadClassType(Type.getObjectType(it.className), classLoader) }
 
         return context.vm.executeWithBreakpointsDisabled {
-            for (parameterType in compiledData.compilationResult.mainMethodSignature.parameterTypes) {
+            for (parameterType in compiledData.mainMethodSignature.parameterTypes) {
                 context.loadClassType(parameterType, classLoader)
             }
             val args = context.calculateMainMethodCallArguments(compiledData)
@@ -321,8 +320,8 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
     }
 
     private fun ExecutionContext.calculateMainMethodCallArguments(compiledData: CompiledDataDescriptor): List<Value?> {
-        val asmValueParameters = compiledData.compilationResult.mainMethodSignature.parameterTypes
-        val valueParameters = compiledData.compilationResult.parameterInfo.parameters
+        val asmValueParameters = compiledData.mainMethodSignature.parameterTypes
+        val valueParameters = compiledData.parameters
         require(asmValueParameters.size == valueParameters.size)
 
         val args = valueParameters.zip(asmValueParameters)
@@ -336,7 +335,7 @@ class KotlinEvaluator(val codeFragment: KtCodeFragment, val sourcePosition: Sour
             if (result == null) {
                 val name = parameter.debugString
 
-                if (parameter in compiledData.compilationResult.parameterInfo.crossingBounds) {
+                if (parameter in compiledData.crossingBounds) {
                     evaluationException("'$name' is not captured")
                 } else {
                     throw VariableFinder.variableNotFound(evaluationContext, buildString {

@@ -2142,8 +2142,12 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
             }
         }
         else {
-            skipPropertyAccessors = forceField
-                    || (propertyDescriptor.getBackingField() != null && Visibilities.isPrivate(propertyDescriptor.getVisibility()));
+            if (JvmCodegenUtil.isDebuggerContext(context)) {
+                boolean backingFieldRequired = bindingContext.get(BACKING_FIELD_REQUIRED, propertyDescriptor) == Boolean.TRUE;
+                skipPropertyAccessors = forceField || (backingFieldRequired && Visibilities.isPrivate(propertyDescriptor.getVisibility()));
+            } else {
+                skipPropertyAccessors = forceField;
+            }
 
             ownerDescriptor = isBackingFieldMovedFromCompanion ? containingDeclaration : propertyDescriptor;
         }

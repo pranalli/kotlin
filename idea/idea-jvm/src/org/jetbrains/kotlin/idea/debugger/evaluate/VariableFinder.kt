@@ -18,7 +18,7 @@ import org.jetbrains.kotlin.codegen.coroutines.CONTINUATION_VARIABLE_NAME
 import org.jetbrains.kotlin.codegen.inline.INLINE_FUN_VAR_SUFFIX
 import org.jetbrains.kotlin.codegen.inline.INLINE_TRANSFORMATION_SUFFIX
 import org.jetbrains.kotlin.idea.debugger.*
-import org.jetbrains.kotlin.idea.debugger.evaluate.CodeFragmentParameterInfo.Parameter
+import org.jetbrains.kotlin.idea.debugger.evaluate.CodeFragmentParameter.*
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 import org.jetbrains.kotlin.idea.util.attachment.mergeAttachments
 import org.jetbrains.kotlin.load.java.JvmAbi
@@ -135,9 +135,10 @@ class VariableFinder private constructor(private val context: ExecutionContext, 
             override fun capturedNameMatches(name: String) = capturedNameRegex.matches(name)
         }
 
-        class LocalFunction(val name: String, val index: Int, asmType: AsmType) : VariableKind(asmType) {
+        // TODO Support overloaded local functions
+        class LocalFunction(val name: String, asmType: AsmType) : VariableKind(asmType) {
             @Suppress("ConvertToStringTemplate")
-            override fun capturedNameMatches(name: String) = name == "$" + name + "$" + index
+            override fun capturedNameMatches(name: String) = name == "$" + name
         }
 
         class UnlabeledThis(asmType: AsmType) : VariableKind(asmType) {
@@ -172,19 +173,14 @@ class VariableFinder private constructor(private val context: ExecutionContext, 
         }
     }
 
-    fun find(parameter: Parameter<*>, asmType: AsmType): Result? {
-        return when (parameter) {
-            is Parameter.Ordinary -> findOrdinary(VariableKind.Ordinary(parameter.name, asmType))
-            is Parameter.ExtensionReceiver -> {
-                if (parameter.isFakeJavaReceiver) {
-                    return frameProxy.thisObject()?.let { Result(it) }
-                }
-
-                findExtensionThis(VariableKind.ExtensionThis(parameter.label, asmType))
-            }
-            is Parameter.LocalFunction -> findLocalFunction(VariableKind.LocalFunction(parameter.name, parameter.functionIndex, asmType))
-            is Parameter.DispatchReceiver -> findDispatchThis(VariableKind.OuterClassThis(asmType))
-            is Parameter.CoroutineContext -> findCoroutineContext()
+    fun find(parameter: CodeFragmentParameter, asmType: AsmType): Result? {
+        return when (parameter.kind) {
+            Kind.ORDINARY -> findOrdinary(VariableKind.Ordinary(parameter.name, asmType))
+            Kind.FAKE_JAVA_OUTER_CLASS -> frameProxy.thisObject()?.let { Result(it) }
+            Kind.EXTENSION_RECEIVER -> findExtensionThis(VariableKind.ExtensionThis(parameter.name, asmType))
+            Kind.LOCAL_FUNCTION -> findLocalFunction(VariableKind.LocalFunction(parameter.name, asmType))
+            Kind.DISPATCH_RECEIVER -> findDispatchThis(VariableKind.OuterClassThis(asmType))
+            Kind.COROUTINE_CONTEXT -> findCoroutineContext()
         }
     }
 
@@ -206,7 +202,7 @@ class VariableFinder private constructor(private val context: ExecutionContext, 
         val variables = frameProxy.safeVisibleVariables()
         
         // Local variables – direct search, new convention
-        val newConventionName = AsmUtil.LOCAL_FUNCTION_VARIABLE_PREFIX + kind.name + "$" + kind.index
+        val newConventionName = AsmUtil.LOCAL_FUNCTION_VARIABLE_PREFIX + kind.name + "$"
         findLocalVariable(variables, kind, newConventionName)?.let { return it }
 
         // Local variables – direct search, old convention (before 1.3.30)

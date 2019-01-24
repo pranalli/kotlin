@@ -22,6 +22,21 @@ class A {
 
 fun foo(p: () -> Int) = p()
 
+// EXPRESSION: foo { publicFun() }
+// RESULT: 1: I
+
+// EXPRESSION: foo { publicVal }
+// RESULT: 1: I
+
+// EXPRESSION: foo { protectedFun() }
+// RESULT: 1: I
+
+// EXPRESSION: foo { protectedVal }
+// RESULT: 1: I
+
+// EXPRESSION: foo { privateFun() }
+// RESULT: 1: I
+
 // EXPRESSION: foo { privateVal }
 // RESULT: 1: I
 
