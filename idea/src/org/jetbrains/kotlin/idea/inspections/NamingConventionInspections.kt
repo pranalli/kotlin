@@ -61,12 +61,13 @@ private val NO_BAD_CHARACTERS_OR_UNDERSCORE = NamingRule("may contain only lette
     it.any { c -> c !in 'a'..'z' && c !in 'A'..'Z' && c !in '0'..'9' && c != '_' }
 }
 
-abstract class NamingConventionInspection(
+internal class NamingConventionInspectionSettings(
     private val entityName: String,
-    @Language("RegExp") protected val defaultNamePattern: String,
+    @Language("RegExp") val defaultNamePattern: String,
     private vararg val rules: NamingRule
-) : AbstractKotlinInspection() {
-    protected var nameRegex: Regex? = defaultNamePattern.toRegex()
+) {
+    var nameRegex: Regex? = defaultNamePattern.toRegex()
+
     var namePattern: String = defaultNamePattern
         set(value) {
             field = value
@@ -77,7 +78,7 @@ abstract class NamingConventionInspection(
             }
         }
 
-    protected fun verifyName(element: PsiNameIdentifierOwner, holder: ProblemsHolder) {
+    fun verifyName(element: PsiNameIdentifierOwner, holder: ProblemsHolder) {
         val name = element.name
         val nameIdentifier = element.nameIdentifier
         if (name != null && nameIdentifier != null && nameRegex?.matches(name) == false) {
@@ -90,7 +91,7 @@ abstract class NamingConventionInspection(
         }
     }
 
-    protected fun getNameMismatchMessage(name: String): String {
+    fun getNameMismatchMessage(name: String): String {
         if (namePattern == defaultNamePattern) {
             for (rule in rules) {
                 if (rule.matcher(name)) {
@@ -102,9 +103,51 @@ abstract class NamingConventionInspection(
         return getDefaultErrorMessage()
     }
 
-    protected fun getDefaultErrorMessage() = "doesn't match regex '$namePattern'"
+    fun getDefaultErrorMessage() = "doesn't match regex '$namePattern'"
 
-    override fun createOptionsPanel() = NamingConventionOptionsPanel(this)
+    fun createOptionsPanel(): JPanel = NamingConventionOptionsPanel(this)
+
+    private class NamingConventionOptionsPanel(settings: NamingConventionInspectionSettings) : JPanel() {
+        init {
+            layout = BorderLayout()
+
+            val regexField = EditorTextField(settings.namePattern, null, RegExpFileType.INSTANCE).apply {
+                setOneLineMode(true)
+            }
+            regexField.document.addDocumentListener(object : DocumentAdapter() {
+                override fun documentChanged(e: DocumentEvent) {
+                    settings.namePattern = regexField.text
+                }
+            })
+            val labeledComponent = LabeledComponent.create(regexField, "Pattern:", BorderLayout.WEST)
+            add(labeledComponent, BorderLayout.NORTH)
+        }
+    }
+}
+
+
+sealed class NamingConventionInspection(
+    entityName: String,
+    @Language("RegExp") defaultNamePattern: String,
+    vararg rules: NamingRule
+) : AbstractKotlinInspection() {
+    internal val namingSettings = NamingConventionInspectionSettings(entityName, defaultNamePattern, *rules)
+
+    var namePattern: String = defaultNamePattern
+        set(value) {
+            field = value
+            namingSettings.namePattern = value
+        }
+
+    protected fun verifyName(element: PsiNameIdentifierOwner, holder: ProblemsHolder) {
+        namingSettings.verifyName(element, holder)
+    }
+
+    protected fun getNameMismatchMessage(name: String): String {
+        return namingSettings.getNameMismatchMessage(name)
+    }
+
+    override fun createOptionsPanel(): JPanel = namingSettings.createOptionsPanel()
 }
 
 class ClassNameInspection : NamingConventionInspection(
@@ -246,11 +289,11 @@ class PackageNameInspection :
         return packageDirectiveVisitor { directive ->
             val packageNameExpression = directive.packageNameExpression ?: return@packageDirectiveVisitor
             val qualifiedName = directive.qualifiedName
-            if (qualifiedName.isEmpty() || nameRegex?.matches(qualifiedName) != false) {
+            if (qualifiedName.isEmpty() || namingSettings.nameRegex?.matches(qualifiedName) != false) {
                 return@packageDirectiveVisitor
             }
 
-            val partErrorMessage = if (namePattern == defaultNamePattern) {
+            val partErrorMessage = if (namePattern == namingSettings.defaultNamePattern) {
                 directive.packageNames.asSequence()
                     .mapNotNull { simpleName ->
                         val referencedName = simpleName.getReferencedName()
@@ -270,7 +313,7 @@ class PackageNameInspection :
             val descriptionTemplate = if (partErrorMessage != null) {
                 "Package name <code>#ref</code> part $partErrorMessage #loc"
             } else {
-                "Package name <code>#ref</code> ${getDefaultErrorMessage()} #loc"
+                "Package name <code>#ref</code> ${namingSettings.getDefaultErrorMessage()} #loc"
             }
 
             holder.registerProblem(
@@ -286,22 +329,5 @@ class PackageNameInspection :
             val packageDirective = element as? KtPackageDirective ?: return null
             return JavaPsiFacade.getInstance(element.project).findPackage(packageDirective.qualifiedName)
         }
-    }
-}
-
-class NamingConventionOptionsPanel(owner: NamingConventionInspection) : JPanel() {
-    init {
-        layout = BorderLayout()
-
-        val regexField = EditorTextField(owner.namePattern, null, RegExpFileType.INSTANCE).apply {
-            setOneLineMode(true)
-        }
-        regexField.document.addDocumentListener(object : DocumentAdapter() {
-            override fun documentChanged(e: DocumentEvent) {
-                owner.namePattern = regexField.text
-            }
-        })
-        val labeledComponent = LabeledComponent.create(regexField, "Pattern:", BorderLayout.WEST)
-        add(labeledComponent, BorderLayout.NORTH)
     }
 }
