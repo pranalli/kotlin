@@ -16,6 +16,7 @@ import org.jetbrains.kotlin.fir.symbols.FirSymbolOwner
 import org.jetbrains.kotlin.fir.visitors.FirVisitorVoid
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
 
 class FirProviderImpl(val session: FirSession) : FirProvider {
 
@@ -29,6 +30,12 @@ class FirProviderImpl(val session: FirSession) : FirProvider {
 
     override fun getSymbolByFqName(classId: ClassId): ConeSymbol? {
         return (getFirClassifierByFqName(classId) as? FirSymbolOwner<*>)?.symbol
+    }
+
+    override fun getCallableSymbols(ownerId: ClassId, name: Name): List<ConeSymbol> {
+        val firClassifier = getFirClassifierByFqName(ownerId) ?: return emptyList()
+
+        TODO("not implemented") //To change body of created functions use File | Settings | File Templates.
     }
 
     override fun getFirClassifierContainerFile(fqName: ClassId): FirFile {
@@ -61,12 +68,18 @@ class FirProviderImpl(val session: FirSession) : FirProvider {
                 classifierMap[classId] = typeAlias
                 classifierContainerFileMap[classId] = file
             }
+
+            override fun visitCallableMember(callableMember: FirCallableMember) {
+                val memberId = Pair(ClassId(packageName, containerFqName, false), callableMember.name)
+                callableMap.merge(memberId, listOf(callableMember)) { a, b -> a + b }
+            }
         })
     }
 
     private val fileMap = mutableMapOf<FqName, List<FirFile>>()
     private val classifierMap = mutableMapOf<ClassId, FirMemberDeclaration>()
     private val classifierContainerFileMap = mutableMapOf<ClassId, FirFile>()
+    private val callableMap = mutableMapOf<Pair<ClassId, Name>, List<FirNamedDeclaration>>()
 
     override fun getFirFilesByPackage(fqName: FqName): List<FirFile> {
         return fileMap[fqName].orEmpty()

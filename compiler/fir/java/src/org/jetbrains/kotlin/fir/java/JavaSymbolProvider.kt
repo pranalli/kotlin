@@ -13,12 +13,16 @@ import org.jetbrains.kotlin.fir.symbols.ConeSymbol
 import org.jetbrains.kotlin.load.java.JavaClassFinder
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.jvm.KotlinJavaPsiFacade
 
 class JavaSymbolProvider(
     val project: Project,
     private val searchScope: GlobalSearchScope
 ) : AbstractFirSymbolProvider() {
+    override fun getCallableSymbols(ownerId: ClassId, name: Name): List<ConeSymbol> {
+        TODO()
+    }
 
     override fun getSymbolByFqName(classId: ClassId): ConeSymbol? {
         return classCache.lookupCacheOrCalculate(classId) {

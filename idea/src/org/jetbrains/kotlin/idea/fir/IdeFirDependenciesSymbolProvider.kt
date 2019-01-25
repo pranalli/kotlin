@@ -23,6 +23,7 @@ import org.jetbrains.kotlin.idea.stubindex.KotlinTopLevelTypeAliasFqNameIndex
 import org.jetbrains.kotlin.idea.stubindex.PackageIndexUtil
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtTypeAlias
@@ -32,7 +33,9 @@ class IdeFirDependenciesSymbolProvider(
     val project: Project,
     private val sessionProvider: FirProjectSessionProvider
 ) : AbstractFirSymbolProvider() {
-
+    override fun getCallableSymbols(ownerId: ClassId, name: Name): List<ConeSymbol> {
+        TODO()
+    }
 
     // TODO: Our special scope here?
     private val depScope = GlobalSearchScope.moduleWithDependenciesAndLibrariesScope(moduleInfo.module)

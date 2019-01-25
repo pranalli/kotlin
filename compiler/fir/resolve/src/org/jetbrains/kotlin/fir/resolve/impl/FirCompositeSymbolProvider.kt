@@ -9,9 +9,17 @@ import org.jetbrains.kotlin.fir.resolve.FirSymbolProvider
 import org.jetbrains.kotlin.fir.symbols.ConeSymbol
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.utils.addToStdlib.firstNotNullResult
 
 class FirCompositeSymbolProvider(val providers: List<FirSymbolProvider>) : FirSymbolProvider {
+    override fun getCallableSymbols(ownerId: ClassId, name: Name): List<ConeSymbol> {
+        for (provider in providers) {
+            val symbols = provider.getCallableSymbols(ownerId, name)
+            if (symbols.isNotEmpty()) return symbols
+        }
+        return emptyList()
+    }
 
     override fun getPackage(fqName: FqName): FqName? {
         return providers.firstNotNullResult { it.getPackage(fqName) }

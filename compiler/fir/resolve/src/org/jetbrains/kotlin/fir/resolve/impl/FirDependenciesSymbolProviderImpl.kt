@@ -13,8 +13,12 @@ import org.jetbrains.kotlin.fir.service
 import org.jetbrains.kotlin.fir.symbols.ConeSymbol
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
 
 class FirDependenciesSymbolProviderImpl(val session: FirSession) : AbstractFirSymbolProvider() {
+    override fun getCallableSymbols(ownerId: ClassId, name: Name): List<ConeSymbol> {
+        TODO()
+    }
 
     private val dependencyProviders by lazy {
         val moduleInfo = session.moduleInfo ?: return@lazy emptyList()

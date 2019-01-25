@@ -10,10 +10,13 @@ import org.jetbrains.kotlin.fir.service
 import org.jetbrains.kotlin.fir.symbols.ConeSymbol
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
+import org.jetbrains.kotlin.name.Name
 
 interface FirSymbolProvider {
 
     fun getSymbolByFqName(classId: ClassId): ConeSymbol?
+
+    fun getCallableSymbols(ownerId: ClassId, name: Name): List<ConeSymbol>
 
     fun getPackage(fqName: FqName): FqName? // TODO: Replace to symbol sometime
 
