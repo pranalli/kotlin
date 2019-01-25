@@ -5,20 +5,29 @@
 
 package org.jetbrains.kotlin.idea.inspections
 
-import com.intellij.codeInspection.LocalInspectionToolSession
-import com.intellij.codeInspection.ProblemsHolder
+import com.intellij.analysis.AnalysisScope
+import com.intellij.codeInspection.*
+import com.intellij.codeInspection.reference.RefEntity
+import com.intellij.codeInspection.reference.RefFile
+import com.intellij.codeInspection.reference.RefPackage
 import com.intellij.openapi.editor.event.DocumentAdapter
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.ui.LabeledComponent
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.psi.JavaPsiFacade
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiNameIdentifierOwner
 import com.intellij.ui.EditorTextField
+import com.siyeh.ig.BaseGlobalInspection
 import com.siyeh.ig.psiutils.TestUtils
 import org.intellij.lang.annotations.Language
 import org.intellij.lang.regexp.RegExpFileType
+import org.jdom.Element
+import org.jetbrains.annotations.NonNls
+import org.jetbrains.kotlin.idea.core.packageMatchesDirectoryOrImplicit
 import org.jetbrains.kotlin.idea.quickfix.RenameIdentifierFix
+import org.jetbrains.kotlin.idea.refactoring.isInjectedFragment
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.containingClassOrObject
@@ -61,9 +70,10 @@ private val NO_BAD_CHARACTERS_OR_UNDERSCORE = NamingRule("may contain only lette
     it.any { c -> c !in 'a'..'z' && c !in 'A'..'Z' && c !in '0'..'9' && c != '_' }
 }
 
-internal class NamingConventionInspectionSettings(
+class NamingConventionInspectionSettings(
     private val entityName: String,
     @Language("RegExp") val defaultNamePattern: String,
+    private val setNamePatternCallback: ((value: String) -> Unit)? = null,
     private vararg val rules: NamingRule
 ) {
     var nameRegex: Regex? = defaultNamePattern.toRegex()
@@ -71,6 +81,7 @@ internal class NamingConventionInspectionSettings(
     var namePattern: String = defaultNamePattern
         set(value) {
             field = value
+            setNamePatternCallback?.invoke(value)
             nameRegex = try {
                 value.toRegex()
             } catch (e: PatternSyntaxException) {
@@ -131,7 +142,7 @@ sealed class NamingConventionInspection(
     @Language("RegExp") defaultNamePattern: String,
     vararg rules: NamingRule
 ) : AbstractKotlinInspection() {
-    internal val namingSettings = NamingConventionInspectionSettings(entityName, defaultNamePattern, *rules)
+    protected val namingSettings = NamingConventionInspectionSettings(entityName, defaultNamePattern, null, *rules)
 
     var namePattern: String = defaultNamePattern
         set(value) {
@@ -278,27 +289,51 @@ class LocalVariableNameInspection :
         START_LOWER, NO_UNDERSCORES, NO_BAD_CHARACTERS
     )
 
-class PackageNameInspection :
-    NamingConventionInspection("Package", "[a-z_][a-zA-Z\\d_]*(\\.[a-z_][a-zA-Z\\d_]*)*") {
-
-    companion object {
-        val PART_RULES = arrayOf(NO_BAD_CHARACTERS_OR_UNDERSCORE, NO_START_UPPER)
-    }
-
+private class PackageNameInspectionLocal(
+    val parentInspection: InspectionProfileEntry,
+    val namingSettings: NamingConventionInspectionSettings
+) : AbstractKotlinInspection() {
     override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean, session: LocalInspectionToolSession): PsiElementVisitor {
         return packageDirectiveVisitor { directive ->
             val packageNameExpression = directive.packageNameExpression ?: return@packageDirectiveVisitor
-            val qualifiedName = directive.qualifiedName
+
+            val checkResult = checkPackageDirective(directive, namingSettings) ?: return@packageDirectiveVisitor
+
+            val descriptionTemplate = checkResult.toProblemTemplateString()
+
+            holder.registerProblem(
+                packageNameExpression,
+                descriptionTemplate,
+                RenamePackageFix()
+            )
+        }
+    }
+
+    companion object {
+        data class CheckResult(val errorMessage: String, val isForPart: Boolean)
+
+        fun CheckResult.toProblemTemplateString(): String {
+            return if (isForPart) {
+                "Package name <code>#ref</code> part $errorMessage #loc"
+            } else {
+                "Package name <code>#ref</code> $errorMessage #loc"
+            }
+        }
+
+        fun checkPackageDirective(directive: KtPackageDirective, namingSettings: NamingConventionInspectionSettings): CheckResult? {
+            return checkQualifiedName(directive.qualifiedName, namingSettings)
+        }
+
+        fun checkQualifiedName(qualifiedName: String, namingSettings: NamingConventionInspectionSettings): CheckResult? {
             if (qualifiedName.isEmpty() || namingSettings.nameRegex?.matches(qualifiedName) != false) {
-                return@packageDirectiveVisitor
+                return null
             }
 
-            val partErrorMessage = if (namePattern == namingSettings.defaultNamePattern) {
-                directive.packageNames.asSequence()
-                    .mapNotNull { simpleName ->
-                        val referencedName = simpleName.getReferencedName()
-                        for (rule in PART_RULES) {
-                            if (rule.matcher(referencedName)) {
+            val partErrorMessage = if (namingSettings.namePattern == namingSettings.defaultNamePattern) {
+                qualifiedName.split('.').asSequence()
+                    .mapNotNull { part ->
+                        for (rule in PackageNameInspection.PART_RULES) {
+                            if (rule.matcher(part)) {
                                 return@mapNotNull rule.message
                             }
                         }
@@ -310,17 +345,11 @@ class PackageNameInspection :
                 null
             }
 
-            val descriptionTemplate = if (partErrorMessage != null) {
-                "Package name <code>#ref</code> part $partErrorMessage #loc"
+            return if (partErrorMessage != null) {
+                CheckResult(partErrorMessage, true)
             } else {
-                "Package name <code>#ref</code> ${namingSettings.getDefaultErrorMessage()} #loc"
+                CheckResult(namingSettings.getDefaultErrorMessage(), false)
             }
-
-            holder.registerProblem(
-                packageNameExpression,
-                descriptionTemplate,
-                RenamePackageFix()
-            )
         }
     }
 
@@ -329,5 +358,85 @@ class PackageNameInspection :
             val packageDirective = element as? KtPackageDirective ?: return null
             return JavaPsiFacade.getInstance(element.project).findPackage(packageDirective.qualifiedName)
         }
+    }
+
+    override fun getShortName(): String = parentInspection.shortName
+    override fun getDisplayName(): String = parentInspection.displayName
+}
+
+class PackageNameInspection : BaseGlobalInspection() {
+    companion object {
+        const val DEFAULT_PACKAGE_NAME_PATTERN = "[a-z_][a-zA-Z\\d_]*(\\.[a-z_][a-zA-Z\\d_]*)*"
+        val PART_RULES = arrayOf(NO_BAD_CHARACTERS_OR_UNDERSCORE, NO_START_UPPER)
+
+        private fun PackageNameInspectionLocal.Companion.CheckResult.toErrorMessage(qualifiedName: String): String {
+            return if (isForPart) {
+                "Package name <code>$qualifiedName</code> part $errorMessage"
+            } else {
+                "Package name <code>$qualifiedName</code> $errorMessage"
+            }
+        }
+    }
+
+    var namePattern: String = DEFAULT_PACKAGE_NAME_PATTERN
+
+    private val namingSettings = NamingConventionInspectionSettings(
+        "Package",
+        DEFAULT_PACKAGE_NAME_PATTERN,
+        setNamePatternCallback = { value ->
+            namePattern = value
+        }
+    )
+
+    override fun checkElement(
+        refEntity: RefEntity,
+        analysisScope: AnalysisScope,
+        inspectionManager: InspectionManager,
+        globalInspectionContext: GlobalInspectionContext
+    ): Array<CommonProblemDescriptor>? {
+        when (refEntity) {
+            is RefFile -> {
+                val psiElement = refEntity.psiElement
+                if (psiElement is KtFile && !psiElement.isInjectedFragment && !psiElement.packageMatchesDirectoryOrImplicit()) {
+                    val packageDirective = psiElement.packageDirective
+                    if (packageDirective != null) {
+                        val qualifiedName = packageDirective.qualifiedName
+                        val checkResult = PackageNameInspectionLocal.checkPackageDirective(packageDirective, namingSettings)
+                        if (checkResult != null) {
+                            return arrayOf(inspectionManager.createProblemDescriptor(checkResult.toErrorMessage(qualifiedName)))
+                        }
+                    }
+                }
+            }
+
+            is RefPackage -> {
+                @NonNls val name = StringUtil.getShortName(refEntity.getQualifiedName())
+                if (name.isEmpty() || InspectionsBundle.message("inspection.reference.default.package") == name) {
+                    return null
+                }
+
+                val checkResult = PackageNameInspectionLocal.checkQualifiedName(name, namingSettings)
+                if (checkResult != null) {
+                    return arrayOf(inspectionManager.createProblemDescriptor(checkResult.toErrorMessage(name)))
+                }
+            }
+
+            else -> {
+                return null
+            }
+        }
+
+        return null
+    }
+
+    override fun readSettings(element: Element) {
+        super.readSettings(element)
+        namingSettings.namePattern = namePattern
+    }
+
+    override fun createOptionsPanel() = namingSettings.createOptionsPanel()
+
+    override fun getSharedLocalInspectionTool(): LocalInspectionTool {
+        return PackageNameInspectionLocal(this, namingSettings)
     }
 }
