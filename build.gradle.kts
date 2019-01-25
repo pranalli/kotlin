@@ -31,7 +31,7 @@ buildscript {
 
         // a workaround to add another one buildSrc with Cidr-specific tools to Gradle classpath
         if (findProperty("cidrPluginsEnabled")?.toString()?.toBoolean() == true) {
-            classpath("org.jetbrains.kotlin.cidr:buildSrc:1.0")
+            classpath("org.jetbrains.kotlin.ultimate:buildSrc:1.0")
         }
     }
 }
