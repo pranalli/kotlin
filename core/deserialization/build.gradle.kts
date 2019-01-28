@@ -3,7 +3,7 @@ plugins {
     id("jps-compatible")
 }
 
-jvmTarget = "1.8"
+jvmTarget = "1.6"
 javaHome = rootProject.extra["JDK_16"] as String
 
 dependencies {

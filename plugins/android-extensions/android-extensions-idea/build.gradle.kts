@@ -6,8 +6,6 @@ plugins {
     id("jps-compatible")
 }
 
-jvmTarget = "1.8"
-
 dependencies {
     testRuntime(intellijDep())
 

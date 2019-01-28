@@ -10,8 +10,6 @@ plugins {
     id("jps-compatible")
 }
 
-jvmTarget = "1.8"
-
 dependencies {
     compile(project(":compiler:psi"))
 

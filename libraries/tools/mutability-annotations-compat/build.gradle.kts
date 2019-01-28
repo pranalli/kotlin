@@ -5,7 +5,7 @@ plugins {
     id("jps-compatible")
 }
 
-jvmTarget = "1.8"
+jvmTarget = "1.6"
 
 tasks.withType<JavaCompile> {
     sourceCompatibility = "1.6"
