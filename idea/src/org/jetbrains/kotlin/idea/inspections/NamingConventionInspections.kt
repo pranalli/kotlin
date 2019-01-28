@@ -73,7 +73,7 @@ private val NO_BAD_CHARACTERS_OR_UNDERSCORE = NamingRule("may contain only lette
 class NamingConventionInspectionSettings(
     private val entityName: String,
     @Language("RegExp") val defaultNamePattern: String,
-    private val setNamePatternCallback: ((value: String) -> Unit)? = null,
+    private val setNamePatternCallback: ((value: String) -> Unit),
     private vararg val rules: NamingRule
 ) {
     var nameRegex: Regex? = defaultNamePattern.toRegex()
@@ -81,7 +81,7 @@ class NamingConventionInspectionSettings(
     var namePattern: String = defaultNamePattern
         set(value) {
             field = value
-            setNamePatternCallback?.invoke(value)
+            setNamePatternCallback.invoke(value)
             nameRegex = try {
                 value.toRegex()
             } catch (e: PatternSyntaxException) {
@@ -142,13 +142,18 @@ sealed class NamingConventionInspection(
     @Language("RegExp") defaultNamePattern: String,
     vararg rules: NamingRule
 ) : AbstractKotlinInspection() {
-    private val namingSettings = NamingConventionInspectionSettings(entityName, defaultNamePattern, null, *rules)
 
+    // Serialized inspection state
+    @Suppress("MemberVisibilityCanBePrivate")
     var namePattern: String = defaultNamePattern
-        set(value) {
-            field = value
-            namingSettings.namePattern = value
-        }
+
+    private val namingSettings = NamingConventionInspectionSettings(
+        entityName, defaultNamePattern,
+        setNamePatternCallback = { value ->
+            namePattern = value
+        },
+        rules = *rules
+    )
 
     protected fun verifyName(element: PsiNameIdentifierOwner, holder: ProblemsHolder) {
         namingSettings.verifyName(element, holder)
@@ -159,6 +164,11 @@ sealed class NamingConventionInspection(
     }
 
     override fun createOptionsPanel(): JPanel = namingSettings.createOptionsPanel()
+
+    override fun readSettings(node: Element) {
+        super.readSettings(node)
+        namingSettings.namePattern = namePattern
+    }
 }
 
 class ClassNameInspection : NamingConventionInspection(
