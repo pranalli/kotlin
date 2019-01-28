@@ -24,11 +24,22 @@ import org.jetbrains.kotlin.compilerRunner.DELETED_SESSION_FILE_PREFIX
 import org.jetbrains.kotlin.compilerRunner.GradleCompilerRunner
 import org.jetbrains.kotlin.gradle.plugin.internal.state.TaskLoggers
 import org.jetbrains.kotlin.gradle.logging.kotlinDebug
+import org.jetbrains.kotlin.gradle.plugin.PropertiesProvider.Companion.PERFORMANCE_REPORT_DIR_PROPERTY
+import org.jetbrains.kotlin.gradle.plugin.internal.state.TaskExecutionResults
+import org.jetbrains.kotlin.gradle.plugin.mpp.AbstractKotlinCompilation
+import org.jetbrains.kotlin.gradle.report.KotlinPerformanceReporter
+import org.jetbrains.kotlin.gradle.tasks.AbstractKotlinCompile
 import org.jetbrains.kotlin.gradle.utils.relativeToRoot
 import org.jetbrains.kotlin.utils.addToStdlib.sumByLong
+import java.io.File
 import java.lang.management.ManagementFactory
+import java.text.SimpleDateFormat
+import java.time.DateTimeException
+import java.util.*
 
-internal class KotlinGradleBuildServices private constructor(gradle: Gradle) : BuildAdapter() {
+internal class KotlinGradleBuildServices private constructor(
+    private val gradle: Gradle
+) : BuildAdapter() {
     companion object {
         private val CLASS_NAME = KotlinGradleBuildServices::class.java.simpleName
         const val FORCE_SYSTEM_GC_MESSAGE = "Forcing System.gc()"
@@ -68,10 +79,20 @@ internal class KotlinGradleBuildServices private constructor(gradle: Gradle) : B
     // but it is called before any plugin can attach build listener
     fun buildStarted() {
         startMemory = getUsedMemoryKb()
+
         TaskLoggers.clear()
+        TaskExecutionResults.clear()
+
+        PropertiesProvider(gradle.rootProject).perfReportDir?.let {
+            configurePerfReporter(it)
+            log.kotlinDebug { "Configured Kotlin performance reporter" }
+        }
     }
 
     override fun buildFinished(result: BuildResult) {
+        TaskLoggers.clear()
+        TaskExecutionResults.clear()
+
         val gradle = result.gradle!!
         GradleCompilerRunner.clearBuildModulesInfo()
 
@@ -100,10 +121,29 @@ internal class KotlinGradleBuildServices private constructor(gradle: Gradle) : B
             log.lifecycle("[KOTLIN][PERF] Used memory after build: $endMem kb (difference since build start: ${"%+d".format(endMem - startMem)} kb)")
         }
 
-        TaskLoggers.clear()
         gradle.removeListener(this)
         instance = null
         log.kotlinDebug(DISPOSE_MESSAGE)
+    }
+
+    private fun configurePerfReporter(perfLogDir: File) {
+        if (perfLogDir.isFile) {
+            log.error("Kotlin performance report cannot be created: '$PERFORMANCE_REPORT_DIR_PROPERTY' is a file")
+        } else {
+            perfLogDir.mkdirs()
+            val ts = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss").format(Calendar.getInstance().getTime())
+
+            val perfReportFile = perfLogDir.resolve("${gradle.rootProject.name}-build-$ts.txt")
+            val reporter = KotlinPerformanceReporter(perfReportFile)
+            gradle.taskGraph.addTaskExecutionListener(reporter)
+            gradle.addBuildListener(reporter)
+
+            gradle.taskGraph.whenReady { graph ->
+                graph.allTasks.asSequence()
+                    .filterIsInstance<AbstractKotlinCompile<*>>()
+                    .forEach { it.reportExecutionResult = true }
+            }
+        }
     }
 
     private fun getUsedMemoryKb(): Long? {

@@ -517,7 +517,11 @@ class CompileServiceImpl(
             buildHistoryFile = incrementalCompilationOptions.multiModuleICSettings.buildHistoryFile,
             modulesApiHistory = modulesApiHistory
         )
-        return compiler.compile(allKotlinFiles, args, compilerMessageCollector, changedFiles)
+        return try {
+            compiler.compile(allKotlinFiles, args, compilerMessageCollector, changedFiles)
+        } finally {
+            reporter.flush()
+        }
     }
 
     private fun execIncrementalCompiler(
@@ -587,7 +591,11 @@ class CompileServiceImpl(
             modulesApiHistory = modulesApiHistory,
             kotlinSourceFilesExtensions = allKotlinExtensions
         )
-        return compiler.compile(allKotlinFiles, k2jvmArgs, compilerMessageCollector, changedFiles)
+        return try {
+            compiler.compile(allKotlinFiles, k2jvmArgs, compilerMessageCollector, changedFiles)
+        } finally {
+            reporter.flush()
+        }
     }
 
     override fun leaseReplSession(

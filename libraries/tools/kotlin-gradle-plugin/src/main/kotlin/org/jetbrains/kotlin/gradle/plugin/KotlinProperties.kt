@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.gradle.dsl.Coroutines
 import org.jetbrains.kotlin.gradle.tasks.AbstractKotlinCompile
 import org.jetbrains.kotlin.gradle.tasks.Kotlin2JsCompile
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.io.File
 import java.util.*
 
 internal fun PropertiesProvider.mapKotlinTaskProperties(task: AbstractKotlinCompile<*>) {
@@ -54,6 +55,9 @@ internal class PropertiesProvider(private val project: Project) {
     val coroutines: Coroutines?
         get() = property("kotlin.coroutines")?.let { Coroutines.byCompilerArgument(it) }
 
+    val perfReportDir: File?
+        get() = property(PERFORMANCE_REPORT_DIR_PROPERTY)?.let { File(it) }
+
     val incrementalJvm: Boolean?
         get() = booleanProperty("kotlin.incremental")
 
@@ -86,4 +90,8 @@ internal class PropertiesProvider(private val project: Project) {
         } else {
             localProperties.getProperty(propName)
         }
+
+    companion object {
+        internal const val PERFORMANCE_REPORT_DIR_PROPERTY = "kotlin.performance.report.dir"
+    }
 }
