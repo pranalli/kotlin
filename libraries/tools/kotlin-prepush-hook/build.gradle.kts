@@ -4,7 +4,7 @@ import java.io.File
 apply { plugin("java") }
 apply { plugin("jps-compatible") }
 
-jvmTarget = "1.6"
+jvmTarget = "1.8"
 
 sourceSets {
     "main" { projectDefault() }

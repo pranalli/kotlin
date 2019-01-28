@@ -5,7 +5,7 @@ plugins {
 
 description = "Kotlin/Native deserializer and library reader"
 
-jvmTarget = "1.6"
+jvmTarget = "1.8"
 
 dependencies {
 

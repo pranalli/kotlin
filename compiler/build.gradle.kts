@@ -9,7 +9,7 @@ plugins {
 }
 
 tasks.named<KotlinJvmCompile>("compileKotlin") {
-    kotlinOptions.jvmTarget = "1.6"
+    kotlinOptions.jvmTarget = "1.8"
 }
 
 tasks.named<KotlinJvmCompile>("compileTestKotlin") {

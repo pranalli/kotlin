@@ -3,7 +3,7 @@ plugins {
     id("jps-compatible")
 }
 
-jvmTarget = "1.6"
+jvmTarget = "1.8"
 
 dependencies {
     compile(project(":kotlin-annotations-jvm"))

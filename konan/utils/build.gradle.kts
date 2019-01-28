@@ -5,7 +5,7 @@ plugins {
 
 description = "Kotlin/Native utils"
 
-jvmTarget = "1.6"
+jvmTarget = "1.8"
 
 dependencies {
     compile(kotlinStdlib())

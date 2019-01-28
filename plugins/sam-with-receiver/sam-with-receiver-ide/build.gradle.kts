@@ -6,7 +6,7 @@ plugins {
     id("jps-compatible")
 }
 
-jvmTarget = "1.6"
+jvmTarget = "1.8"
 
 dependencies {
     compile(project(":kotlin-sam-with-receiver-compiler-plugin"))

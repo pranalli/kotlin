@@ -5,7 +5,7 @@ plugins {
     id("jps-compatible")
 }
 
-jvmTarget = "1.6"
+jvmTarget = "1.8"
 
 dependencies {
     compileOnly(intellijCoreDep()) { includeJars("intellij-core") }

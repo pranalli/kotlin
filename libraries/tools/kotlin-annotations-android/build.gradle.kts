@@ -6,7 +6,7 @@ plugins {
     kotlin("jvm")
 }
 
-jvmTarget = "1.6"
+jvmTarget = "1.8"
 javaHome = rootProject.extra["JDK_16"] as String
 
 tasks.withType<KotlinCompile> {
